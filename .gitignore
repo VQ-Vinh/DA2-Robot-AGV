@@ -1,0 +1,74 @@
+# ---------- Build output ----------
+build/
+Build/
+out/
+Debug/
+Release/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CMakeUserPresets.json
+compile_commands.json
+.cmake/
+
+# Compiler / linker artifacts
+*.o
+*.obj
+*.a
+*.d
+*.su
+*.elf
+*.hex
+*.bin
+*.map
+*.list
+*.lst
+
+# ---------- STM32 / CubeMX ----------
+.mxproject
+*.ioc.bak
+STM32CubeIDE/
+Middlewares/
+.dep/
+
+# Debug / programming
+.gdb_history
+openocd.log
+*.jlink
+*.svd.cache
+
+# ---------- Python (RasPi) ----------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# ---------- Editors / IDE ----------
+.vscode/
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.code-workspace
+.cache/
+.clangd/
+
+# ---------- OS ----------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# ---------- Misc ----------
+*.log
+*.tmp
+*.bak
+*~
