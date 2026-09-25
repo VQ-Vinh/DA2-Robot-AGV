@@ -133,6 +133,36 @@ def main():
         else:
             print("  OK - moi file trong Core/Src deu co trong danh sach build")
 
+    # --- Code tu viet: Modules/ + App/, khong duoc nam trong Core/ ---
+    # File CubeMX sinh trong Core/Src: ten ngoai vi + cac file he thong co dinh
+    cubemx_files = set(FILE_OF.values()) | {
+        "main", "stm32f4xx_it", "stm32f4xx_hal_msp", "stm32f4xx_hal_timebase_tim",
+        "syscalls", "sysmem", "system_stm32f4xx", "freertos", "app_freertos",
+    }
+    stray = sorted(p.stem for p in src.glob("*.c") if p.stem not in cubemx_files)
+    user_cml = root / "CMakeLists.txt"
+    user_listed = set()
+    if user_cml.exists():
+        user_listed = set(re.findall(r"((?:Modules|App)/Src/\w+\.c)",
+                                     user_cml.read_text(encoding="utf-8", errors="replace")))
+    user_on_disk = {
+        f"{d}/Src/{p.name}"
+        for d in ("Modules", "App")
+        for p in (root / d / "Src").glob("*.c")
+    }
+    unlisted = sorted(user_on_disk - user_listed)
+    print("\nCODE TU VIET (Modules/, App/):")
+    print(f"  Modules/Src: {', '.join(sorted(p.stem for p in (root / 'Modules' / 'Src').glob('*.c'))) or '(trong)'}")
+    print(f"  App/Src    : {', '.join(sorted(p.stem for p in (root / 'App' / 'Src').glob('*.c'))) or '(trong)'}")
+    if stray:
+        print(f"  CANH BAO: file khong phai CubeMX nam trong Core/Src: {', '.join(stray)}")
+        print("            -> chuyen sang Modules/ (driver) hoac App/ (logic)")
+    if unlisted:
+        print(f"  CANH BAO: chua dang ky trong STM32/CMakeLists.txt: {', '.join(unlisted)}")
+        print("            -> them vao target_sources(), phan '# Add user sources here'")
+    if not stray and not unlisted:
+        print("  OK - dung cau truc, moi file deu da dang ky voi CMake")
+
     # --- Kiem tra --expect ---
     rc = 0
     if args.expect:
