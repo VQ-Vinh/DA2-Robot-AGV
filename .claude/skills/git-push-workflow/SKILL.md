@@ -78,7 +78,7 @@ Các đường cắt thường đúng trong repo này:
 Commit theo từng nhóm file cụ thể, đừng `git add -A` rồi commit một cục:
 
 ```bash
-git add STM32/Core/Src/pwm.c STM32/Core/Inc/pwm.h
+git add STM32/Modules/Src/pwm.c STM32/Modules/Inc/pwm.h
 git commit -m "feat(stm32): add PWM driver for motor control"
 ```
 

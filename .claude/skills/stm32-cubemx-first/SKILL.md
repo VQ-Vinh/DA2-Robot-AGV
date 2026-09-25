@@ -9,7 +9,9 @@ description: |
   thêm hoặc sửa chức năng trên STM32 — điều khiển động cơ, PWM, đọc encoder,
   UART, I2C, SPI, ADC, ngắt, timer, DMA, cảm biến, LED, nút nhấn — kể cả khi họ
   chỉ nói ngắn gọn kiểu "viết hàm điều khiển động cơ" hay "cho tôi đọc cảm biến"
-  mà không nhắc gì tới CubeMX.
+  mà không nhắc gì tới CubeMX. Skill này cũng quy định chỗ đặt code tự viết:
+  driver trong STM32/Modules/, logic ứng dụng trong STM32/App/, main.c chỉ gọi
+  App_Init()/App_Loop() — không bao giờ thêm file tự viết vào Core/.
 ---
 
 # Viết code STM32: cấu hình CubeMX trước, code sau
@@ -26,7 +28,8 @@ lặng lẽ — code vẫn build, chỉ là phần cứng không còn được c
 dùng sẽ đi soi logic trong khi lỗi nằm ở chỗ hoàn toàn khác.
 
 Nên thứ tự đúng là: người dùng cấu hình trong CubeMX → generate code → ta viết
-phần logic trong các khối `USER CODE`.
+driver trong `Modules/`, logic trong `App/`, và `main.c` chỉ gọi `App_Init()` /
+`App_Loop()` từ trong các khối `USER CODE` (chi tiết ở Bước 3).
 
 ## Khi nào phải dừng lại, khi nào làm luôn
 
@@ -124,21 +127,87 @@ Kết quả kiểm tra quyết định bước tiếp theo:
   là chưa generate), hướng dẫn bổ sung, đợi lượt xác nhận tiếp. Đừng tự sửa
   `.ioc` bằng tay để đi tiếp cho nhanh — xem mục cuối.
 
-### Bước 3 — Viết code, chỉ trong khối USER CODE
+### Bước 3 — Viết code: driver trong `Modules/`, logic trong `App/`
 
 Project đang bật `KeepUserCode=true`, nghĩa là CubeMX giữ lại nội dung nằm giữa
 các cặp `/* USER CODE BEGIN X */` và `/* USER CODE END X */`, và xóa sạch mọi
 thứ nằm ngoài. Đây là ràng buộc cứng, không phải khuyến nghị.
 
-- Code logic đặt trong `USER CODE` của `main.c`, hoặc tốt hơn là tách thành
-  module riêng trong `Core/Src/` + `Core/Inc/` do mình quản lý hoàn toàn
-- File tự viết phải thêm vào `target_sources()` trong `STM32/CMakeLists.txt`
-  (phần `# Add user sources here`), không thêm vào
-  `cmake/stm32cubemx/CMakeLists.txt` vì file đó CubeMX sẽ ghi đè
-- Kiểm tra cặp BEGIN/END bao đúng chỗ. Code lọt ra ngoài cặp đó trông vẫn chạy
-  bình thường cho tới lần generate kế tiếp, lúc đó mới mất — rất khó truy
-- Dùng handle CubeMX đã tạo (`htim3`, `huart2`), khai báo `extern` qua header
-  tương ứng (`tim.h`, `usart.h`), đừng tự định nghĩa lại
+Vì vậy code tự viết **không đặt trong `Core/`**. `Core/` là đất của CubeMX; ta
+chỉ đụng vào nó đúng một chỗ là `main.c`. Toàn bộ code của mình nằm trong hai
+thư mục riêng, chia theo tầng:
+
+```
+STM32/
+├── Core/              <- CubeMX sinh, KHÔNG thêm file tự viết vào đây
+├── Modules/           <- driver / module phần cứng dùng lại được
+│   ├── Inc/           motor.h, encoder.h, retarget.h, ...
+│   └── Src/           motor.c, encoder.c, retarget.c, ...
+└── App/               <- logic ứng dụng: kịch bản, máy trạng thái, điều khiển
+    ├── Inc/           app.h
+    └── Src/           app.c
+```
+
+Quy tắc phân tầng, gọi theo một chiều `main.c` → `App/` → `Modules/` → HAL:
+
+- **`Modules/`**: mỗi module bọc một khối phần cứng (motor, encoder, cảm biến,
+  retarget printf...), hoặc một thư viện tính toán dùng lại được và không phụ
+  thuộc phần cứng (PID, bộ lọc) — loại thứ hai thì không include HAL. Được include `tim.h`, `usart.h`, `gpio.h` để dùng handle
+  CubeMX (`htim1`, `huart2`) — dùng qua `extern` trong các header đó, đừng tự
+  định nghĩa lại. Chân/timer gom thành macro ở đầu file `.c` để đổi phần cứng chỉ
+  sửa một chỗ. Module không gọi lên `App/` và không chứa kịch bản chạy.
+- **`App/`**: logic của đồ án, chỉ gọi API của `Modules/`. Không đụng trực tiếp
+  vào thanh ghi hay handle timer/UART; cần gì thì thêm hàm vào module tương ứng.
+  Lộ ra đúng hai hàm cho `main.c`: `App_Init()` (gọi một lần) và `App_Loop()`
+  (gọi liên tục, **không được chặn** — dùng mốc `HAL_GetTick()`, không
+  `HAL_Delay`).
+- **`main.c`**: chỉ được thêm đúng ba thứ, tất cả nằm trong khối USER CODE:
+
+  ```c
+  /* USER CODE BEGIN Includes */
+  #include "app.h"
+  /* USER CODE END Includes */
+  ...
+  /* USER CODE BEGIN 2 */
+  App_Init();
+  /* USER CODE END 2 */
+  ...
+  /* USER CODE BEGIN 3 */
+    App_Loop();
+  }                       /* dấu } đóng while(1) nằm TRONG khối 3, đừng xóa */
+  /* USER CODE END 3 */
+  ```
+
+  Không đặt biến, define, hàm, hay `__io_putchar` vào `main.c` — những thứ đó
+  thuộc về `App/` hoặc `Modules/`. Ngoại lệ duy nhất là callback ngắt của HAL
+  (`HAL_TIM_PeriodElapsedCallback`...) nếu cần: đặt trong module sở hữu ngoại
+  vi đó, không phải `main.c`.
+
+Đăng ký với CMake — chỉ sửa `STM32/CMakeLists.txt`, **không** sửa
+`cmake/stm32cubemx/CMakeLists.txt` vì CubeMX ghi đè file đó:
+
+```cmake
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+    # Add user sources here
+    Modules/Src/motor.c
+    App/Src/app.c
+)
+
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+    # Add user defined include paths
+    Modules/Inc
+    App/Inc
+)
+```
+
+Thêm module mới = thêm cặp file vào `Modules/Inc` + `Modules/Src` và một dòng
+vào `target_sources`. Script `check_ioc.py` cảnh báo nếu có file `.c` trong
+`Modules/Src` hoặc `App/Src` chưa được đăng ký, hoặc có file lạ lọt vào
+`Core/Src`.
+
+Khi sửa `main.c`, kiểm tra lại cặp BEGIN/END bao đúng chỗ. Code lọt ra ngoài cặp
+đó trông vẫn chạy bình thường cho tới lần generate kế tiếp, lúc đó mới mất — rất
+khó truy.
 
 Viết xong thì build để xác nhận:
 

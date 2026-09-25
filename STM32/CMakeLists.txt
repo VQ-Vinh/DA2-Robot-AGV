@@ -45,11 +45,22 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
+    Modules/Src/motor.c
+    Modules/Src/pid.c
+    Modules/Src/encoder.c
+    Modules/Src/retarget.c
+    Modules/Src/uart_tx.c
+    Modules/Src/uart_rx.c
+    App/Src/app.c
+    App/Src/speed_ctrl.c
+    App/Src/cli.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
+    Modules/Inc
+    App/Inc
 )
 
 # Add project symbols (macros)

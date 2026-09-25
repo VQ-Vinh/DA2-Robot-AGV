@@ -30,7 +30,6 @@ compile_commands.json
 .mxproject
 *.ioc.bak
 STM32CubeIDE/
-Middlewares/
 .dep/
 
 # Debug / programming
@@ -72,3 +71,8 @@ $RECYCLE.BIN/
 *.tmp
 *.bak
 *~
+
+# Log UART va anh do thi sinh ra khi tinh chinh
+STM32/tools/logs/
+*.png
+__pycache__/
