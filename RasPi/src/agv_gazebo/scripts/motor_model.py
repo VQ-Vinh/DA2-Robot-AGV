@@ -9,17 +9,23 @@ phong gap dung nhung gi se gap tren xe that.
 
   /cmd_vel (Twist) -> toc do 2 ben banh (RPM) -> gioi han -> /cmd_vel_limited (Twist)
 
-Hai buoc gioi han:
-  1. Banh nao vuot rpm_max thi thu nho CA HAI ben cung ti le, giu nguyen do cong
-     duong di (viec nay node cau noi Pi <-> STM32 sau nay cung phai lam).
-  2. Banh nao khac 0 nhung duoi rpm_min thi day len rpm_min (giong firmware).
-     Vi du: Nav2 xin 0.1 m/s -> 29 RPM -> thanh 100 RPM -> xe chay 0.34 m/s.
+Cac buoc 1-2 la viec cua node cau noi Pi <-> STM32 (sau nay phai lam y het),
+buoc 3 la firmware:
+  1. Giu ban kinh cua (preserve_turning_radius, giong diff_drive_controller cua Husky):
+     banh nao khac 0 ma duoi rpm_min thi nhan CA HAI banh cung ti le cho toi khi banh
+     cham nhat dat rpm_min. Xe chay nhanh hon nhung van dung duong cong.
+     Khong co buoc nay: Nav2 xin v=0.25, w=0.33 (52 / 95 RPM) -> firmware day ca hai
+     len 100 RPM -> xe di thang, mat lai -> troi vao ke trong loi hep.
+  2. Banh nao vuot rpm_max thi thu nho CA HAI ben cung ti le (cung giu ban kinh cua).
+  3. Firmware: banh nao con khac 0 ma duoi rpm_min thi day len rpm_min.
+     Vi du khi tat buoc 1: Nav2 xin 0.1 m/s -> 29 RPM -> 100 RPM -> xe chay 0.34 m/s.
 
 Tham so (mac dinh khop xe that va firmware hien tai):
   wheel_radius  0.0325  m
   track         0.45    m, track hieu dung (effective_track trong URDF)
   rpm_min       100     dat 0 de tat vung chet, xem xe chay "ly tuong" ra sao
   rpm_max       270
+  preserve_turning_radius  true   false = chi co gioi han cua firmware (buoc 2-3)
 """
 import math
 
@@ -36,6 +42,7 @@ class MotorModel(Node):
         self.track = self.declare_parameter('track', 0.45).value
         self.rpm_min = self.declare_parameter('rpm_min', 100.0).value
         self.rpm_max = self.declare_parameter('rpm_max', 270.0).value
+        self.preserve_radius = self.declare_parameter('preserve_turning_radius', True).value
 
         self.pub = self.create_publisher(Twist, 'cmd_vel_limited', 10)
         self.create_subscription(Twist, 'cmd_vel', self.on_cmd, 10)
@@ -50,13 +57,24 @@ class MotorModel(Node):
         return rpm * 2.0 * math.pi / 60.0 * self.r
 
     def limit(self, rpm_l, rpm_r):
-        # 1. Qua toc: thu nho ca hai ben cung ti le
+        # Firmware nhan so nguyen: duoi 0.5 RPM la 0
+        rpm_l = 0.0 if abs(rpm_l) < 0.5 else rpm_l
+        rpm_r = 0.0 if abs(rpm_r) < 0.5 else rpm_r
+
+        # 1. Giu ban kinh cua: day ca hai banh len cung ti le cho banh cham nhat dat rpm_min
+        moving = [abs(x) for x in (rpm_l, rpm_r) if x != 0.0]
+        if self.preserve_radius and moving and min(moving) < self.rpm_min:
+            k = self.rpm_min / min(moving)
+            rpm_l *= k
+            rpm_r *= k
+
+        # 2. Qua toc: thu nho ca hai ben cung ti le
         peak = max(abs(rpm_l), abs(rpm_r))
         if peak > self.rpm_max:
             rpm_l *= self.rpm_max / peak
             rpm_r *= self.rpm_max / peak
 
-        # 2. Vung chet: firmware nhan so nguyen RPM, khac 0 ma nho thi day len rpm_min
+        # 3. Vung chet cua firmware: khac 0 ma nho thi day len rpm_min
         def deadband(rpm):
             rpm = round(rpm)
             if rpm == 0:
