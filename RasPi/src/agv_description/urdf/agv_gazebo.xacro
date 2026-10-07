@@ -44,8 +44,11 @@
       <max_angular_acceleration>3.0</max_angular_acceleration>
       <min_angular_acceleration>-3.0</min_angular_acceleration>
       <topic>/model/agv/cmd_vel</topic>
-      <odom_topic>/odom</odom_topic>
-      <tf_topic>/tf</tf_topic>
+      <!-- Odom banh xe tho (khong covariance). Node wheel_odom them covariance roi gui
+           /wheel/odom cho EKF; EKF moi phat /odom va TF odom -> base_footprint.
+           TF cua DiffDrive khong duoc bridge. -->
+      <odom_topic>/model/agv/odom</odom_topic>
+      <tf_topic>/model/agv/odom_tf</tf_topic>
       <frame_id>odom</frame_id>
       <child_frame_id>base_footprint</child_frame_id>
       <odom_publish_frequency>30</odom_publish_frequency>
@@ -98,7 +101,9 @@
     </sensor>
   </gazebo>
 
-  <!-- IMU 100 Hz, nhieu nho gan BNO055 -->
+  <!-- IMU 100 Hz, nhieu gan BNO055 (gyro ~0.014 dps/sqrt(Hz)).
+       Gyro co them bias ngau nhien (do lech 0 con lai sau hieu chuan, ~0.03 deg/s) de
+       goc tich phan bi troi nhu IMU that; khong co bias thi EKF trong sim tot qua muc. -->
   <gazebo reference="imu_link">
     <sensor name="imu" type="imu">
       <gz_frame_id>imu_link</gz_frame_id>
@@ -109,7 +114,8 @@
         <angular_velocity>
           <x><noise type="gaussian"><mean>0</mean><stddev>0.002</stddev></noise></x>
           <y><noise type="gaussian"><mean>0</mean><stddev>0.002</stddev></noise></y>
-          <z><noise type="gaussian"><mean>0</mean><stddev>0.002</stddev></noise></z>
+          <z><noise type="gaussian"><mean>0</mean><stddev>0.002</stddev>
+               <bias_mean>0.0005</bias_mean><bias_stddev>0.0002</bias_stddev></noise></z>
         </angular_velocity>
         <linear_acceleration>
           <x><noise type="gaussian"><mean>0</mean><stddev>0.02</stddev></noise></x>

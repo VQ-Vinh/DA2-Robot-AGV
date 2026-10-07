@@ -66,6 +66,18 @@ def generate_launch_description():
                      'use_sim_time': True}],
         output='screen')
 
+    # Odom banh xe cua Gazebo khong co covariance -> them vao, gui /wheel/odom nhu xe that
+    wheel_odom = Node(
+        package='agv_gazebo', executable='wheel_odom.py',
+        parameters=[{'use_sim_time': True}],
+        output='screen')
+
+    # EKF dung chung voi xe that: /wheel/odom + /imu -> /odom + TF odom -> base_footprint
+    ekf = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([FindPackageShare('agv_localization'), 'launch', 'ekf.launch.py'])),
+        launch_arguments={'use_sim_time': 'true'}.items())
+
     rviz_node = Node(
         package='rviz2', executable='rviz2',
         arguments=['-d', PathJoinSubstitution([desc_pkg, 'rviz', 'agv.rviz'])],
@@ -97,6 +109,8 @@ def generate_launch_description():
         spawn,
         bridge,
         motor_model,
+        wheel_odom,
+        ekf,
         rviz_node,
         steering_node,
     ])
