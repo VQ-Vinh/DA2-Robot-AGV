@@ -11,10 +11,11 @@ Vung cam (pallet thap, lidar khong thay) lay tu maps/keepout_mask.yaml qua 2 ser
 cua Nav2, giong nav2_costmap_filters_demo. Tao lai mat na: scripts/make_keepout_mask.py
 """
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
-from launch_ros.actions import Node
+from launch_ros.actions import LoadComposableNodes
+from launch_ros.descriptions import ComposableNode
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
@@ -24,24 +25,28 @@ def generate_launch_description():
     use_sim_time = ParameterValue(LaunchConfiguration('use_sim_time'), value_type=bool)
     params = LaunchConfiguration('params_file')
 
-    # Mat na vung cam: map_server rieng phat /keepout_filter_mask + server thong tin bo loc
-    # (nhanh khong composition cua nav2_costmap_filters_demo). Da thu nap vao chung
-    # nav2_container (nhanh composition): xe khong chay duoc, nen giu tien trinh rieng.
-    keepout_nodes = GroupAction([
-        Node(package='nav2_map_server', executable='map_server', name='filter_mask_server',
-             parameters=[params, {'use_sim_time': use_sim_time,
-                                  'yaml_filename': LaunchConfiguration('keepout_mask')}],
-             output='screen'),
-        Node(package='nav2_map_server', executable='costmap_filter_info_server',
-             name='costmap_filter_info_server',
-             parameters=[params, {'use_sim_time': use_sim_time}],
-             output='screen'),
-        Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
-             name='lifecycle_manager_costmap_filters',
-             parameters=[{'use_sim_time': use_sim_time, 'autostart': True,
-                          'node_names': ['filter_mask_server', 'costmap_filter_info_server']}],
-             output='screen'),
-    ])
+    # Mat na vung cam: map_server rieng phat /keepout_filter_mask + server thong tin bo loc.
+    # Nap vao chung nav2_container voi Nav2 (nhanh use_composition, mac dinh cua demo): chay
+    # tien trinh rieng thi lifecycle manager hay ket o "Configuring filter_mask_server" khi may
+    # tai nang (che do co cua so) -> mat na khong bao gio duoc phat.
+    keepout_nodes = LoadComposableNodes(
+        target_container='/nav2_container',
+        composable_node_descriptions=[
+            ComposableNode(
+                package='nav2_map_server', plugin='nav2_map_server::MapServer',
+                name='filter_mask_server',
+                parameters=[params, {'use_sim_time': use_sim_time,
+                                     'yaml_filename': LaunchConfiguration('keepout_mask')}]),
+            ComposableNode(
+                package='nav2_map_server', plugin='nav2_map_server::CostmapFilterInfoServer',
+                name='costmap_filter_info_server',
+                parameters=[params, {'use_sim_time': use_sim_time}]),
+            ComposableNode(
+                package='nav2_lifecycle_manager', plugin='nav2_lifecycle_manager::LifecycleManager',
+                name='lifecycle_manager_costmap_filters',
+                parameters=[{'use_sim_time': use_sim_time, 'autostart': True,
+                             'node_names': ['filter_mask_server', 'costmap_filter_info_server']}]),
+        ])
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
