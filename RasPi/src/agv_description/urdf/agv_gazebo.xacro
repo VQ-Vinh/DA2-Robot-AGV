@@ -86,6 +86,13 @@
             <min_angle>-3.14159</min_angle>
             <max_angle>3.14159</max_angle>
           </horizontal>
+          <!-- Lidar 2D: 1 tia doc, nam ngang (giong laser.urdf.xacro cua linorobot2) -->
+          <vertical>
+            <samples>1</samples>
+            <resolution>1</resolution>
+            <min_angle>0.0</min_angle>
+            <max_angle>0.0</max_angle>
+          </vertical>
         </scan>
         <range>
           <min>0.12</min>
