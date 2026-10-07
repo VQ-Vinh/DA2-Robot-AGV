@@ -7,6 +7,7 @@ ROS 2 **Jazzy** (Ubuntu 24.04) + **Gazebo Harmonic**. Chạy mô phỏng trên P
 | `agv_description` | URDF/xacro xe skid-steer 4 bánh, lidar, IMU; cấu hình RViz |
 | `agv_gazebo` | World kho hàng, bridge Gazebo ↔ ROS 2, launch mô phỏng, node riêng cho mô phỏng |
 | `agv_localization` | EKF gộp odom bánh xe + IMU → `/odom`; dùng chung cho mô phỏng và xe thật |
+| `agv_navigation` | SLAM (slam_toolbox), bản đồ kho `maps/warehouse`, RViz cho SLAM; dùng chung cho mô phỏng và xe thật |
 
 ## Tạo workspace (một lần)
 
@@ -17,11 +18,49 @@ mkdir -p ~/agv_ws/src
 ln -sfn /mnt/d/MyBK/HK261/DA2/Src/RasPi/src/agv_description ~/agv_ws/src/agv_description
 ln -sfn /mnt/d/MyBK/HK261/DA2/Src/RasPi/src/agv_gazebo      ~/agv_ws/src/agv_gazebo
 ln -sfn /mnt/d/MyBK/HK261/DA2/Src/RasPi/src/agv_localization ~/agv_ws/src/agv_localization
+ln -sfn /mnt/d/MyBK/HK261/DA2/Src/RasPi/src/agv_navigation   ~/agv_ws/src/agv_navigation
 cd ~/agv_ws && colcon build --symlink-install
 source ~/agv_ws/install/setup.bash
 ```
 
 Build lại chỉ khi thêm file mới. Sửa file có sẵn (`.xacro`, `.sdf`, `.yaml`, `.py`) thì không cần build lại vì đã dùng `--symlink-install`.
+
+## Xem mô phỏng (từng bước)
+
+1. **Mở terminal Ubuntu**: trong Windows Terminal chọn tab *Ubuntu-24.04*, hoặc gõ `wsl -d Ubuntu-24.04` trong PowerShell. `~/.bashrc` đã nạp sẵn ROS, workspace và biến GPU.
+2. **Build** (chỉ cần khi có file mới, ví dụ sau khi `git pull`):
+   ```bash
+   cd ~/agv_ws && colcon build --symlink-install && source install/setup.bash
+   ```
+3. **Chạy mô phỏng kèm lập bản đồ**:
+   ```bash
+   ros2 launch agv_gazebo sim.launch.py slam:=true
+   ```
+   Sau ~15 giây sẽ hiện 3 cửa sổ:
+   - **Gazebo**: kho 3D, xe ở đầu phía tây kho (x = −4.5). Bảng *Teleop* bên phải để lái, tia lidar được vẽ quanh xe.
+   - **RViz** (nhìn từ trên xuống): bản đồ đang được vẽ (xám = chưa biết, trắng = trống, đen = vật cản), chấm đỏ = tia lidar, mũi tên vàng = vị trí EKF.
+   - **rqt_robot_steering**: 2 thanh trượt tốc độ tiến / quay.
+4. **Cho xe chạy**, chọn một trong hai cách:
+   - Lái tay bằng bảng Teleop hoặc rqt_robot_steering. Lái **chậm, quay chậm**, đi qua hết các lối đi.
+   - Cho xe tự đi hết lộ trình qua các lối đi (~2.5 phút). Mở terminal thứ hai:
+     ```bash
+     ros2 run agv_gazebo drive_route.py --ros-args -p rot_start:=0.6 -p rot_stop:=0.45
+     ```
+     Hai tham số `rot_*` dùng khi vùng chết động cơ đang bật (mặc định). Chạy với `rpm_min:=0` thì bỏ hai tham số này.
+5. **Lưu bản đồ** khi đã đi hết kho (terminal thứ hai):
+   ```bash
+   ros2 run nav2_map_server map_saver_cli -f /mnt/d/MyBK/HK261/DA2/Src/RasPi/src/agv_navigation/maps/warehouse --ros-args -p save_map_timeout:=30.0
+   ```
+6. **Tắt**: Ctrl+C ở terminal đang chạy `ros2 launch`.
+
+Sự cố thường gặp:
+
+| Hiện tượng | Cách xử lý |
+|---|---|
+| Không cửa sổ nào hiện, hoặc tiêu đề cửa sổ có `[WARN:COPY MODE]` | WSLg bị treo: chạy `wsl --shutdown` trong PowerShell rồi mở lại Ubuntu |
+| Gazebo tắt ngay khi mở, log có `Segmentation fault` trong `libnvwgf2umx.so` | Lỗi ngẫu nhiên của driver GPU trong WSL, chạy lại lệnh launch |
+| RViz báo lỗi `indexed_8bit_image ... GLSL link result` | Lỗi đã biết của rviz2 ([ros2/rviz#463](https://github.com/ros2/rviz/issues/463)), bản đồ vẫn hiện bình thường, bỏ qua |
+| `ros2 topic echo/list` không ra gì | `ros2 daemon stop; ros2 daemon start`, hoặc thêm `--no-daemon` |
 
 ## Chạy
 
@@ -94,6 +133,26 @@ Kết quả (xuất phát `x:=-4.4 y:=-2.5 yaw:=1.5708`, ~7.5 m gồm đi thẳn
 | Odom bánh xe `/wheel/odom` | 0.20–0.24 m (2.7–3.0 %) | 9.0–9.1° |
 | EKF `/odom` | **0.09–0.12 m (1.2–1.5 %)** | **2.4–3.4°** |
 
+## Lập bản đồ: slam_toolbox
+
+```bash
+ros2 launch agv_gazebo sim.launch.py slam:=true      # mô phỏng
+ros2 launch agv_navigation slam.launch.py            # xe thật (cần /scan, /odom, TF)
+```
+
+Cấu hình `agv_navigation/config/slam.yaml` là **nguyên file mặc định** `mapper_params_online_async.yaml` của slam_toolbox, chỉ đổi `max_laser_range` thành 10 m (YDLidar X4). Cách làm này giống [linorobot2](https://github.com/linorobot/linorobot2) (dự án AGV DIY dùng Jazzy + Gazebo Harmonic + YDLidar). Kiến trúc DiffDrive → EKF (odom vx, vy, wz + gyro wz) → slam_toolbox cũng giống linorobot2 và robot mẫu `sam_bot` của [Nav2](https://github.com/ros-navigation/navigation2_tutorials).
+
+> **Đừng chỉnh tham số SLAM khi chưa đo.** Lần đầu mình hạ `minimum_travel_distance/heading` từ 0.5 xuống 0.2 và `map_update_interval` từ 5 s xuống 2 s. Kết quả là SLAM quá tải ("Message Filter dropping message... queue is full"), TF map → odom trễ tới 1.7 s, bản đồ đầy vệt chéo, chỉ 25–36 % ô vật cản nằm đúng chỗ. Trả về mặc định thì hết.
+
+Kết quả (lộ trình `drive_route.py`, ~52 m qua mọi lối đi, chấm bằng cách so ô vật cản với tường/kệ thật trong world):
+
+| | Ô vật cản cách vật thật ≤ 10 cm | Sai lệch trung vị |
+|---|---|---|
+| Không vùng chết (`rpm_min:=0`), quay 0.5 rad/s | 98.4 % | 2.8 cm |
+| Có vùng chết (mặc định, quay ≥ 1.5 rad/s) | **99.4 %** | **2.7 cm** |
+
+Bản đồ trong repo (`maps/warehouse.pgm/.yaml`) lấy từ lần chạy có vùng chết. Gốc frame `map` là chỗ xe xuất phát (world x = −4.5, y = 0). Pallet 15 cm **không có** trên bản đồ vì lidar quét cao 17 cm, nên cần vùng cấm ở bước Nav2.
+
 ## Topic
 
 | Topic | Kiểu | Chiều |
@@ -104,6 +163,7 @@ Kết quả (xuất phát `x:=-4.4 y:=-2.5 yaw:=1.5708`, ~7.5 m gồm đi thẳn
 | `/sim/wheel_odom` | `nav_msgs/Odometry` | Gazebo → `wheel_odom`, covariance = 0 |
 | `/wheel/odom` | `nav_msgs/Odometry` | `wheel_odom` → EKF (xe thật: node cầu nối STM32) |
 | `/odom`, `/tf` (odom → base_footprint) | `nav_msgs/Odometry`, `tf2_msgs/TFMessage` | EKF → SLAM, Nav2 |
+| `/map`, `/tf` (map → odom) | `nav_msgs/OccupancyGrid` | slam_toolbox → RViz, Nav2 |
 | `/scan` (7 Hz, 720 tia, 0.12–10 m) | `sensor_msgs/LaserScan` | Gazebo → ROS |
 | `/imu` (100 Hz) | `sensor_msgs/Imu` | Gazebo → ROS |
 | `/joint_states`, `/clock` | | Gazebo → ROS |
