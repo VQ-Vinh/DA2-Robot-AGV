@@ -8,6 +8,7 @@ ROS 2 **Jazzy** (Ubuntu 24.04) + **Gazebo Harmonic**. Chạy mô phỏng trên P
 | `agv_gazebo` | World kho hàng, bridge Gazebo ↔ ROS 2, launch mô phỏng, node riêng cho mô phỏng |
 | `agv_localization` | EKF gộp odom bánh xe + IMU → `/odom`; dùng chung cho mô phỏng và xe thật |
 | `agv_navigation` | SLAM (slam_toolbox), bản đồ kho `maps/warehouse`, dẫn đường Nav2 + vùng cấm; dùng chung cho mô phỏng và xe thật |
+| `agv_mission` | Nhiệm vụ kho: vị trí có tên (kệ, trạm sạc, khu nhận hàng), nhiệm vụ định sẵn, gõ lệnh từ terminal; dùng chung cho mô phỏng và xe thật |
 
 ## Tạo workspace (một lần)
 
@@ -19,6 +20,7 @@ ln -sfn /mnt/d/MyBK/HK261/DA2/Src/RasPi/src/agv_description ~/agv_ws/src/agv_des
 ln -sfn /mnt/d/MyBK/HK261/DA2/Src/RasPi/src/agv_gazebo      ~/agv_ws/src/agv_gazebo
 ln -sfn /mnt/d/MyBK/HK261/DA2/Src/RasPi/src/agv_localization ~/agv_ws/src/agv_localization
 ln -sfn /mnt/d/MyBK/HK261/DA2/Src/RasPi/src/agv_navigation   ~/agv_ws/src/agv_navigation
+ln -sfn /mnt/d/MyBK/HK261/DA2/Src/RasPi/src/agv_mission      ~/agv_ws/src/agv_mission
 cd ~/agv_ws && colcon build --symlink-install
 source ~/agv_ws/install/setup.bash
 ```
@@ -60,6 +62,19 @@ ros2 launch agv_gazebo sim.launch.py nav:=true
 - RViz mở `agv_navigation/rviz/nav.rviz` (từ cấu hình mặc định của Nav2, gọn hơn): bản đồ trắng/đen, 2 pallet là ô vùng cấm, chấm đỏ = lidar, đường xanh = đường Nav2 lập, ô mờ quanh xe = local costmap. Global costmap (lớp tím/xanh phủ cả kho) tắt sẵn, muốn xem thì tick lại trong *Displays → Global Planner*.
 - Xe đã được đặt sẵn vị trí ban đầu. Nếu đặt xe chỗ khác (`x:= y:=`), bấm **2D Pose Estimate** rồi kéo chuột tại chỗ xe đứng.
 - Bấm **Nav2 Goal**, click vào điểm đích trên bản đồ rồi kéo chuột để chọn hướng. Xe tự lập đường (đường xanh) và đi tới.
+
+**Chạy nhiệm vụ kho** (bước 5). Tự chạy khi khởi động:
+```bash
+ros2 launch agv_gazebo sim.launch.py nav:=true mission:=giao_hang
+```
+Hoặc chạy `nav:=true` rồi gõ lệnh ở terminal thứ hai:
+```bash
+ros2 run agv_mission agv_cmd.py list                      # vị trí và nhiệm vụ
+ros2 run agv_mission agv_cmd.py goto ke_C2                # đi tới một vị trí
+ros2 run agv_mission agv_cmd.py run giao_hang --follow    # chạy nhiệm vụ, in tiến độ tới khi xong
+ros2 run agv_mission agv_cmd.py cancel                    # dừng
+```
+Trên RViz, các vị trí hiện thành đĩa màu có tên (xanh lá = trạm sạc, cam = khu nhận hàng, xanh dương = kệ). Trong Gazebo, trạm sạc và khu nhận hàng là các ô sơn trên sàn.
 
 Sự cố thường gặp:
 
@@ -190,6 +205,20 @@ Kết quả: 4 điểm đích qua các lối đi (lối dưới, phía đông gi
 Dung sai đích của Nav2 là 0.25 m, tính theo vị trí AMCL. Lệch thật có thể lớn hơn một chút vì AMCL tự nó lệch khoảng 0.1–0.2 m.
 
 **Vấn đề còn mở.** Ở lần 4, khi xe chạy dọc phía đông kho, AMCL lệch dần 0.4 rồi 1.1 m theo hướng đông–tây. Xe thật đi quá về phía đông, dừng cách tường đông khoảng 7 cm. Collision monitor (cấu hình mặc định) thấy tường quá sát nên chặn mọi lệnh, kể cả lùi và xoay của bước tự gỡ, nên xe kẹt luôn. AMCL và collision monitor hiện đang dùng nguyên mặc định của Nav2, giống linorobot2. Cần tìm hiểu tiếp: vì sao AMCL lệch ở khu phía đông (khu trống, chỉ có tường và đầu kệ), và cấu hình collision monitor sao cho vẫn cho phép lùi ra.
+
+## Nhiệm vụ kho: `agv_mission`
+
+```
+agv_cmd.py ──/mission/command──► mission_server ──NavigateToPose──► Nav2
+                                     │
+                                     ├─/mission/status   (tiến độ, giữ tin cuối)
+                                     └─/mission/stations (MarkerArray cho RViz)
+```
+
+- `config/stations.yaml`: vị trí có tên trong frame `map`, gồm `tram_sac` (chỗ xe xuất phát), `khu_nhan_hang` (vùng trống tây nam) và `ke_A1`…`ke_D2` (giữa lối đi phía nam mỗi kệ).
+- `config/missions.yaml`: nhiệm vụ định sẵn. `giao_hang`: kệ C2 → khu nhận hàng → trạm sạc. `giao_hang_2`: kệ A1, kệ D2 → khu nhận hàng → trạm sạc. `tuan_tra`: đi qua 8 kệ → trạm sạc. Mỗi bước có việc (`pick`/`drop`/`charge`/`pass`) và thời gian dừng.
+- `mission_server.py` chờ `bt_navigator` "active" rồi mới gửi đích. Chặng thất bại thì xoá costmap, đợi 3 s và thử lại 1 lần; vẫn thất bại thì bỏ qua và đi tiếp. Hết nhiệm vụ thì in dòng `TONG KET` kèm thời gian từng chặng. Tham số launch: `mission:=<tên>`, `repeat:=<số lần>`.
+- Trên xe thật: chạy `navigation.launch.py` + `ros2 launch agv_mission mission.launch.py`. Toạ độ trong `stations.yaml` phải đo lại trên bản đồ của kho thật.
 
 ## Topic
 
