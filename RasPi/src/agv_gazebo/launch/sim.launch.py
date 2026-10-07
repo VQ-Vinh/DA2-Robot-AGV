@@ -7,8 +7,8 @@ Vi du:
   ros2 launch agv_gazebo sim.launch.py slam:=true      # them slam_toolbox, RViz hien ban do
 """
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (Command, LaunchConfiguration, PathJoinSubstitution,
                                   PythonExpression)
@@ -31,16 +31,23 @@ def generate_launch_description():
         Command(['xacro ', PathJoinSubstitution([desc_pkg, 'urdf', 'agv.urdf.xacro'])]),
         value_type=str)
 
-    # -r: chay ngay; -s: chi server (khong GUI) khi headless:=true
-    # --gui-config: giao dien co them bang Teleop
-    gz_args = [PythonExpression(["'-r -s ' if '", headless, "' == 'true' else '-r '"]),
-               '--gui-config ', PathJoinSubstitution([gz_pkg, 'config', 'gui.config']), ' ',
-               world]
+    # Server (vat ly, cam bien) va cua so Gazebo chay 2 tien trinh rieng, giong linorobot2.
+    # Chi server la bat buoc: cua so Gazebo chet (driver GPU trong WSL thinh thoang crash
+    # luc khoi tao OpenGL) thi mo phong, RViz, SLAM van chay; mo lai bang `gz sim -g`.
+    gz_sim_launch = PathJoinSubstitution([FindPackageShare('ros_gz_sim'), 'launch', 'gz_sim.launch.py'])
 
-    gazebo = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution([FindPackageShare('ros_gz_sim'), 'launch', 'gz_sim.launch.py'])),
-        launch_arguments={'gz_args': gz_args, 'on_exit_shutdown': 'true'}.items())
+    gazebo_server = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(gz_sim_launch),
+        launch_arguments={'gz_args': ['-r -s ', world], 'on_exit_shutdown': 'true'}.items())
+
+    # Mo cua so sau server vai giay, de 2 tien trinh khong khoi tao OpenGL cung luc
+    gazebo_gui = TimerAction(period=5.0, actions=[IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(gz_sim_launch),
+        launch_arguments={
+            # --gui-config: giao dien co them bang Teleop
+            'gz_args': ['-g --gui-config ', PathJoinSubstitution([gz_pkg, 'config', 'gui.config'])],
+            'on_exit_shutdown': 'false'}.items())],
+        condition=UnlessCondition(headless))
 
     robot_state_publisher = Node(
         package='robot_state_publisher', executable='robot_state_publisher',
@@ -122,7 +129,8 @@ def generate_launch_description():
                               description='true: chay slam_toolbox lap ban do'),
         DeclareLaunchArgument('rpm_min', default_value='100.0',
                               description='RPM nho nhat cua banh (vung chet firmware), 0 = tat'),
-        gazebo,
+        gazebo_server,
+        gazebo_gui,
         robot_state_publisher,
         spawn,
         bridge,

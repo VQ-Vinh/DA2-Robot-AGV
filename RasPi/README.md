@@ -58,7 +58,7 @@ Sự cố thường gặp:
 | Hiện tượng | Cách xử lý |
 |---|---|
 | Không cửa sổ nào hiện, hoặc tiêu đề cửa sổ có `[WARN:COPY MODE]` | WSLg bị treo: chạy `wsl --shutdown` trong PowerShell rồi mở lại Ubuntu |
-| Gazebo tắt ngay khi mở, log có `Segmentation fault` trong `libnvwgf2umx.so` | Lỗi ngẫu nhiên của driver GPU trong WSL, chạy lại lệnh launch |
+| Cửa sổ Gazebo tắt (driver GPU của WSL thỉnh thoảng crash khi khởi tạo OpenGL) | Mô phỏng, RViz, SLAM vẫn chạy vì server và cửa sổ Gazebo là 2 tiến trình riêng. Mở lại cửa sổ ở terminal khác: `gz sim -g --gui-config ~/agv_ws/install/agv_gazebo/share/agv_gazebo/config/gui.config` |
 | RViz báo lỗi `indexed_8bit_image ... GLSL link result` | Lỗi đã biết của rviz2 ([ros2/rviz#463](https://github.com/ros2/rviz/issues/463)), bản đồ vẫn hiện bình thường, bỏ qua |
 | `ros2 topic echo/list` không ra gì | `ros2 daemon stop; ros2 daemon start`, hoặc thêm `--no-daemon` |
 
