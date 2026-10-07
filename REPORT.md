@@ -56,6 +56,8 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 07/10/2026 | Bước 2: EKF gộp odom bánh xe + IMU | #5 |
 | 07/10/2026 | Bước 3: SLAM lập bản đồ kho | #6 |
 | 07/10/2026 | Bước 4: Nav2 tự dẫn đường + vùng cấm | #7 |
+| 07/10/2026 | Nhật ký quá trình (tài liệu này) + skill ghi báo cáo | #8 |
+| 07/10/2026 | Bước 5: nhiệm vụ kho (trạm sạc, khu nhận hàng, kịch bản + lệnh), video demo | #9 |
 
 ---
 
@@ -181,6 +183,41 @@ Các sự cố gặp phải, theo thứ tự:
 - Nhật ký "vị trí thật – vị trí ước lượng – lệnh xin – lệnh thực" theo thời gian tìm ra nguyên nhân nhanh hơn nhiều so với đoán (sự cố 2–3).
 - Báo "đã sửa" chỉ khi đã tự kiểm tra kết quả (sự cố 7).
 
+### 4.5. Bước 5 – Nhiệm vụ kho (PR #9)
+- **Mục tiêu:** biến khả năng "đi tới một điểm" thành nhiệm vụ AGV. Kho có trạm sạc và khu nhận hàng. Ra lệnh được theo 2 cách: chạy kịch bản tự động, và gõ lệnh từ máy tính.
+- **Cách làm:** package `agv_mission`, dùng chung cho mô phỏng và xe thật:
+  - `stations.yaml`: 10 vị trí có tên (trạm sạc ở chỗ xe xuất phát, khu nhận hàng ở vùng trống tây nam, 8 điểm lấy hàng ở giữa lối đi phía nam mỗi kệ).
+  - `missions.yaml`: 3 nhiệm vụ: `giao_hang` (3 chặng), `giao_hang_2` (4 chặng), `tuan_tra` (9 chặng).
+  - `mission_server.py`: gửi từng đích cho Nav2 qua action `NavigateToPose`. Chặng thất bại thì xoá costmap, đợi 3 s và thử lại 1 lần. In dòng tổng kết kèm thời gian từng chặng.
+  - `agv_cmd.py`: lệnh `list / goto / run / cancel / status`.
+  - Trạm sạc và khu nhận hàng vẽ thành ô sơn trên sàn Gazebo (chỉ để nhìn, không va chạm, lidar không thấy) và thành đĩa màu có tên trên RViz.
+  - Node điều phối **không dùng** `BasicNavigator`, vì lỗi gửi dồn vị trí ban đầu ở bước 4.
+
+| # | Sự cố | Nguyên nhân (tìm bằng cách nào) | Cách sửa |
+|---|---|---|---|
+| 1 | Lần chạy đầu: 0/3 chặng, cả 3 bị "Nav2 từ chối đích" trong 0.6 s | Node coi Nav2 sẵn sàng khi action server có mặt và có vị trí AMCL, nhưng lúc đó `bt_navigator` chưa "active" nên từ chối mọi đích. Thử lại ngay cũng bị từ chối (log thời điểm từng dòng) | Hỏi trạng thái vòng đời `bt_navigator/get_state`, chờ "active", giống thư viện của Nav2; khi bị từ chối thì đợi 3 s rồi mới thử lại |
+| 2 | Lệnh `goto ke_A1 --follow` thoát sau 6 s, khi xe chưa tới | Kênh `/mission/status` giữ lại 10 tin cũ cho node vào sau, trong đó có dòng "TONG KET" của nhiệm vụ trước. Công cụ chỉ bỏ qua tin cũ trong 0.5 s đầu, nhưng kết nối DDS trong WSL lâu hơn thế | Bỏ qua mọi tin nhận được trước khi gửi lệnh |
+| 3 | Thời gian tính lại cho lần thử lại không được đặt lại, nên lần thử lại sẽ bị huỷ ngay (phát hiện khi đọc lại code, chưa xảy ra lúc chạy) | Dùng chung một mốc thời gian cho cả chặng và từng lần thử | Tách 2 mốc: bắt đầu chặng (tính tổng) và bắt đầu lần thử (tính timeout) |
+| 4 | Công cụ quay video rò bộ nhớ, rồi đọc vùng nhớ đã giải phóng (phát hiện khi đọc lại code trước khi chạy) | Ảnh lấy bằng `XGetImage` không được giải phóng; sau khi thêm `XFree` lại đọc kích thước ảnh sau khi giải phóng | Lưu kích thước trước, rồi `XFree` |
+| 5 | Trên RViz không thấy đĩa/tên vị trí, dù node phát đủ 20 marker (kiểm bằng subscriber riêng) | Lớp hiển thị nằm cuối danh sách. Giả thuyết: lớp vùng cấm (phủ cả bản đồ, mờ 50 %) vẽ đè lên; **chưa kiểm chứng riêng** | Đưa lớp Stations lên ngay dưới lớp Map thì hiện; đổi chữ tên sang màu tối cho dễ đọc trên nền trắng |
+
+**Kết quả** (mô phỏng không cửa sổ, có vùng chết động cơ):
+
+| Nhiệm vụ | Cách ra lệnh | Kết quả |
+|---|---|---|
+| `giao_hang` (3 chặng) | tự động, 4 lần (1 lần riêng + 3 lần lặp liên tiếp) | **4/4 lần đủ 3/3 chặng**: 62.0, 61.8, 60.6, 74.4 s |
+| `tuan_tra` (9 chặng) | tự động | **9/9 chặng**, 152.4 s, không cần thử lại |
+| `giao_hang_2` (4 chặng) | gõ lệnh `run` | **4/4 chặng**, 81.5 s, có 2 lần thử lại tự động (1 do bị lệnh trước chen ngang, 1 do lỗi TF thoáng qua lúc nhận đích mới) |
+| `giao_hang` có cửa sổ (2 lần quay video) | tự động | 3/3 chặng, 62.8 và 61.4 s |
+
+- Lần lặp thứ 3 của `giao_hang` chậm hơn (74.4 s so với khoảng 61 s): chặng tới khu nhận hàng mất 35.7 s thay vì khoảng 24 s. Log có 24 lần "collision ahead" và 3 lần "Controller patience exceeded"; bước tự gỡ bên trong Nav2 xử lý được nên xe vẫn tới đích.
+- Video demo [`RasPi/docs/demo_giao_hang.mp4`](RasPi/docs/demo_giao_hang.mp4): nhiệm vụ `giao_hang`, ghép cửa sổ Gazebo + RViz + dòng trạng thái, 45 s (tua nhanh ×2). Chỉ chụp cửa sổ của WSL, không chụp màn hình Windows.
+
+**Bài học:**
+- "Có action server" chưa có nghĩa là "nhận lệnh được"; phải kiểm tra đúng trạng thái mà thư viện chuẩn kiểm tra.
+- Kênh có giữ tin cũ (transient local) cần phân biệt tin cũ với tin mới.
+- Đọc lại code trước khi chạy bắt được 2 lỗi (sự cố 3–4) mà test có thể không lộ ra.
+
 ---
 
 ## 5. Tổng hợp sai lầm và bài học
@@ -195,12 +232,15 @@ Các sự cố gặp phải, theo thứ tự:
 | Nav2 | Firmware chỉ chặn tốc độ từng bánh | Phải giữ bán kính cua khi giới hạn tốc độ |
 | Kiểm thử | Tin kết quả của script test có lỗi | Kiểm tra công cụ đo trước khi kết luận về hệ thống |
 | Kiểm thử | Báo đã sửa khi chưa nhìn kết quả | Tự xác nhận (chụp màn hình, đo) trước khi báo |
+| Nhiệm vụ | Gửi đích khi Nav2 chưa "active" | Kiểm tra trạng thái vòng đời như thư viện chuẩn |
+| Nhiệm vụ | Đọc nhầm tin cũ của kênh giữ tin | Bỏ qua tin nhận trước khi gửi lệnh |
 
 ## 6. Vấn đề còn mở
-1. **AMCL lệch ở khu phía đông kho:** ở 1 trong 5 lần chạy, AMCL lệch tới 1.1 m, xe dừng sát tường và collision monitor chặn cả bước lùi, nên xe kẹt. Cần tìm cách các dự án tham khảo xử lý.
-2. **Vùng chết của động cơ:** xe không đi chậm hơn 0.34 m/s và không quay chậm hơn 1.5 rad/s. Nên cải thiện điều khiển tốc độ thấp trên STM32 để hạ `SPD_RPM_MIN`.
-3. **Phần cứng chưa làm:** mở rộng 4 bánh, node cầu nối UART Pi ↔ STM32 (phải có giữ bán kính cua + covariance cho odom), YDLidar, BNO055, INA226.
-4. **Kích thước xe** (track, wheelbase) vẫn là ước lượng, cần đo xe thật.
+1. **AMCL lệch ở khu phía đông kho:** ở 1 trong 5 lần chạy (bước 4), AMCL lệch tới 1.1 m, xe dừng sát tường và collision monitor chặn cả bước lùi, nên xe kẹt. Chưa sửa. Các vị trí của bước 5 không nằm ở khu phía đông nên chưa gặp lại, nhưng vấn đề vẫn còn. Cần tìm cách các dự án tham khảo xử lý.
+2. **Bộ điều khiển hay báo "collision ahead" trong lối hẹp 1 m**, làm có chặng chậm hơn bình thường khoảng 50 % (bước 5). Chưa chỉnh.
+3. **Vùng chết của động cơ:** xe không đi chậm hơn 0.34 m/s và không quay chậm hơn 1.5 rad/s. Nên cải thiện điều khiển tốc độ thấp trên STM32 để hạ `SPD_RPM_MIN`.
+4. **Phần cứng chưa làm:** mở rộng 4 bánh, node cầu nối UART Pi ↔ STM32 (phải có giữ bán kính cua + covariance cho odom), YDLidar, BNO055, INA226.
+5. **Kích thước xe** (track, wheelbase) vẫn là ước lượng, cần đo xe thật.
 
 ## 7. Cách ghi tiếp tài liệu này
 Mỗi khi xong một phần việc hoặc sửa xong một sự cố, thêm vào mục tương ứng theo quy ước ở đầu file: mục tiêu, cách làm, sai lầm, nguyên nhân, cách sửa, kết quả có số liệu, bài học. Quy tắc này nằm trong skill `.claude/skills/report-log`.

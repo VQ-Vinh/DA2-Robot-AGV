@@ -1,0 +1,35 @@
+# Nhiem vu dinh san: chuoi buoc, moi buoc = toi mot vi tri (stations.yaml) roi lam viec.
+#   station : ten vi tri
+#   task    : pick (lay hang) | drop (tra hang) | charge (sac) | pass (chi di qua)
+#   wait_s  : thoi gian dung tai cho (gia lap boc / do hang), giay
+#
+# Chay tu dong khi khoi dong:  ros2 launch agv_gazebo sim.launch.py nav:=true mission:=giao_hang
+# Hoac go lenh:                ros2 run agv_mission agv_cmd.py run giao_hang
+missions:
+  giao_hang:
+    description: "Lay hang o ke C2, giao toi khu nhan hang, ve tram sac"
+    steps:
+      - {station: ke_C2, task: pick, wait_s: 3.0}
+      - {station: khu_nhan_hang, task: drop, wait_s: 3.0}
+      - {station: tram_sac, task: charge, wait_s: 0.0}
+
+  giao_hang_2:
+    description: "Lay hang o ke A1 va ke D2, giao toi khu nhan hang, ve tram sac"
+    steps:
+      - {station: ke_A1, task: pick, wait_s: 3.0}
+      - {station: ke_D2, task: pick, wait_s: 3.0}
+      - {station: khu_nhan_hang, task: drop, wait_s: 3.0}
+      - {station: tram_sac, task: charge, wait_s: 0.0}
+
+  tuan_tra:
+    description: "Di qua 8 ke (kiem kho) roi ve tram sac"
+    steps:
+      - {station: ke_A1, task: pass, wait_s: 1.0}
+      - {station: ke_B1, task: pass, wait_s: 1.0}
+      - {station: ke_C1, task: pass, wait_s: 1.0}
+      - {station: ke_D1, task: pass, wait_s: 1.0}
+      - {station: ke_D2, task: pass, wait_s: 1.0}
+      - {station: ke_C2, task: pass, wait_s: 1.0}
+      - {station: ke_B2, task: pass, wait_s: 1.0}
+      - {station: ke_A2, task: pass, wait_s: 1.0}
+      - {station: tram_sac, task: charge, wait_s: 0.0}

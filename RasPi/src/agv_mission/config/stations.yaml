@@ -1,0 +1,31 @@
+# Cac vi tri co ten trong kho, frame "map" (goc = cho xe xuat phat luc lap ban do,
+# tuc world x = -4.5, y = 0 trong agv_gazebo/worlds/warehouse.sdf: map = world + (4.5, 0)).
+#
+#   x, y : m        yaw : rad (huong xe khi toi noi, 0 = huong +x cua ban do)
+#   kind : charge | receive | shelf   (dung de to mau marker tren RViz)
+#
+# Diem lay hang cua moi ke nam giua loi di phia nam ke, xe huong doc loi di:
+#   hang A (world y = 2.4) -> loi y = 1.6     hang B (y = 0.8)  -> loi y = 0.0
+#   hang C (y = -0.8)      -> loi y = -1.6    hang D (y = -2.4) -> loi y = -3.35
+#   cot 1 (world x = -1.2) -> map x = 3.3     cot 2 (x = 2.8)   -> map x = 7.3
+stations:
+  tram_sac:
+    x: 0.0
+    y: 0.0
+    yaw: 0.0
+    kind: charge
+    label: "Tram sac"
+  khu_nhan_hang:
+    x: 0.1
+    y: -3.0
+    yaw: 3.14159
+    kind: receive
+    label: "Khu nhan hang"
+  ke_A1: {x: 3.3, y: 1.6, yaw: 0.0, kind: shelf, label: "Ke A1"}
+  ke_B1: {x: 3.3, y: 0.0, yaw: 0.0, kind: shelf, label: "Ke B1"}
+  ke_C1: {x: 3.3, y: -1.6, yaw: 0.0, kind: shelf, label: "Ke C1"}
+  ke_D1: {x: 3.3, y: -3.35, yaw: 0.0, kind: shelf, label: "Ke D1"}
+  ke_A2: {x: 7.3, y: 1.6, yaw: 0.0, kind: shelf, label: "Ke A2"}
+  ke_B2: {x: 7.3, y: 0.0, yaw: 0.0, kind: shelf, label: "Ke B2"}
+  ke_C2: {x: 7.3, y: -1.6, yaw: 0.0, kind: shelf, label: "Ke C2"}
+  ke_D2: {x: 7.3, y: -3.35, yaw: 0.0, kind: shelf, label: "Ke D2"}

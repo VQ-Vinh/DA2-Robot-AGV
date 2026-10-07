@@ -184,5 +184,25 @@
       </link>
     </model>
 
+    <!-- ===================== Vach son san: tram sac, khu nhan hang =====================
+         Chi de nhin (khong collision), day 2 mm: lidar quet o 17 cm khong thay, ban do khong doi.
+         Vi tri khop agv_mission/config/stations.yaml (map = world + 4.5 theo x). -->
+    <model name="charging_station">
+      <static>true</static>
+      <pose>-4.5 0 0.001 0 0 0</pose>
+      <link name="link">
+        <visual name="v"><geometry><box><size>0.6 0.6 0.002</size></box></geometry>
+          <material><ambient>0.1 0.7 0.2 1</ambient><diffuse>0.1 0.7 0.2 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="receiving_area">
+      <static>true</static>
+      <pose>-4.4 -3.0 0.001 0 0 0</pose>
+      <link name="link">
+        <visual name="v"><geometry><box><size>1.0 0.8 0.002</size></box></geometry>
+          <material><ambient>0.95 0.55 0.0 1</ambient><diffuse>0.95 0.55 0.0 1</diffuse></material></visual>
+      </link>
+    </model>
+
   </world>
 </sdf>
