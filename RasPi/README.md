@@ -186,7 +186,7 @@ ros2 launch agv_navigation navigation.launch.py      # xe thật (cần /scan, /
 
 Làm theo [linorobot2](https://github.com/linorobot/linorobot2):
 - `agv_navigation/config/nav2.yaml` là **file mặc định của Nav2 Jazzy**, chỉ thay khối bộ điều khiển bằng khối của linorobot2. Khối đó dùng **RotationShim** (quay tại chỗ về hướng đường đi) kết hợp **Regulated Pure Pursuit** (bám đường, ~0.4 m/s). Kiểu chạy này hợp với xe có vùng chết.
-- Đổi thêm: bán kính xe 0.25 m, lidar 10 m, AMCL đặt sẵn vị trí ban đầu ở gốc bản đồ.
+- Đổi thêm: bán kính xe 0.25 m, lidar 10 m, AMCL đặt sẵn vị trí ban đầu ở gốc bản đồ, AMCL `alpha1–4: 0.05` và `z_hit/z_rand: 0.95/0.05` (xem mục dưới).
 - `navigation.launch.py` gọi thẳng `bringup_launch.py` của Nav2 (map_server + AMCL + navigation).
 
 **Vùng cấm cho pallet.** Lidar quét cao 17 cm không thấy pallet 15 cm. Lần chạy đầu, Nav2 lập đường sát pallet_2 và xe húc vào. Bánh quay trượt nên odom vẫn tăng, AMCL bị kéo lệch 3.8 m. Đã thêm **keepout filter** của Nav2, cấu hình lấy từ [nav2_costmap_filters_demo](https://github.com/ros-navigation/navigation2_tutorials):
@@ -200,11 +200,17 @@ Kết quả: 4 điểm đích qua các lối đi (lối dưới, phía đông gi
 | Nav2 mặc định + linorobot2, chưa vùng cấm | 1/4 | — | xe húc pallet, AMCL lệch 3.8 m |
 | + vùng cấm pallet | 3/4 | — | mất lái trong lối hẹp (xem mục mô hình động cơ) |
 | + giữ bán kính cua, lần 1–3 | **4/4, 4/4, 4/4** | 13–44 s | 0.10–0.30 m |
-| + giữ bán kính cua, lần 4 | 1/4 | — | xem "Vấn đề còn mở" |
+| + giữ bán kính cua, lần 4 | 1/4 | — | AMCL lệch ở khu phía đông (xem dưới) |
+| + chỉnh AMCL theo số đo (3 lần) | **4/4, 4/4, 4/4** | 13–30 s | 0.12–0.26 m |
 
 Dung sai đích của Nav2 là 0.25 m, tính theo vị trí AMCL. Lệch thật có thể lớn hơn một chút vì AMCL tự nó lệch khoảng 0.1–0.2 m.
 
-**Vấn đề còn mở.** Ở lần 4, khi xe chạy dọc phía đông kho, AMCL lệch dần 0.4 rồi 1.1 m theo hướng đông–tây. Xe thật đi quá về phía đông, dừng cách tường đông khoảng 7 cm. Collision monitor (cấu hình mặc định) thấy tường quá sát nên chặn mọi lệnh, kể cả lùi và xoay của bước tự gỡ, nên xe kẹt luôn. AMCL và collision monitor hiện đang dùng nguyên mặc định của Nav2, giống linorobot2. Cần tìm hiểu tiếp: vì sao AMCL lệch ở khu phía đông (khu trống, chỉ có tường và đầu kệ), và cấu hình collision monitor sao cho vẫn cho phép lùi ra.
+**AMCL lệch ở khu phía đông (đã sửa).** Với tham số AMCL mặc định của Nav2, khi xe chạy sang khu phía đông, AMCL lệch dần 0.3–1.1 m (2/3 lần đo bị lạc hẳn tới 6 m). Xe thật đi quá, dừng sát tường và kẹt. Các phép đo để tìm nguyên nhân:
+- Đặt scan lên bản đồ theo vị trí thật: khớp 97–100 %, nên **bản đồ đúng**.
+- Scan đều có TF, AMCL vẫn cập nhật đều, thời gian của lidar không lệch (τ ≈ 0–0.1 s).
+- Đám hạt AMCL **tản rộng tới 1.8 m**. Tự chấm điểm từng hạt theo mô hình của AMCL: hạt điểm cao nhất cách vị trí thật 1–6 cm, nhưng chỉ hơn hạt trung bình khoảng 2.3 lần. Vị trí AMCL báo ra là trung bình cả đám nên bị kéo lệch.
+- Nguyên nhân: `alpha1–4 = 0.2` giả định odom sai khoảng 45 %, trong khi odom EKF đo được chỉ sai 2–3 %. Mỗi lần xe quay tại chỗ (rất nhiều, do vùng chết), đám hạt phình ra. Thêm vào đó `z_hit/z_rand = 0.5/0.5` làm điểm của các hạt ít khác nhau.
+- Cách sửa: `alpha1–4: 0.05`, `z_hit: 0.95, z_rand: 0.05` (mặc định của AMCL ROS 1). Kết quả: sai số định vị lớn nhất còn 0.14–0.16 m, 12/12 điểm đích, không còn "collision ahead".
 
 ## Nhiệm vụ kho: `agv_mission`
 

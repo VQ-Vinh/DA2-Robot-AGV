@@ -2,10 +2,14 @@
 # giong cach lam cua linorobot2. Chi doi cac dong co ghi chu "AGV:".
 amcl:
   ros__parameters:
-    alpha1: 0.2
-    alpha2: 0.2
-    alpha3: 0.2
-    alpha4: 0.2
+    # AGV: nhieu chuyen dong theo do thuc te. alpha la phuong sai tuong doi (std = sqrt(alpha) x chuyen dong):
+    # 0.2 = gia dinh odom sai ~45 %, nhung odom EKF do duoc chi sai 2-3 % quang duong, goc tu gyro.
+    # alpha4 = 0.2 lam dam hat phinh ra moi lan xe quay tai cho (vung chet dong co -> quay rat nhieu)
+    # -> dam hat tan toi 1.8 m o khu phia dong, AMCL lech 0.3-0.8 m. 0.05 (~22 %) van du xa.
+    alpha1: 0.05
+    alpha2: 0.05
+    alpha3: 0.05
+    alpha4: 0.05
     alpha5: 0.2
     base_frame_id: "base_footprint"
     beam_skip_distance: 0.5
@@ -34,9 +38,9 @@ amcl:
     transform_tolerance: 1.0
     update_min_a: 0.2
     update_min_d: 0.25
-    z_hit: 0.5
+    z_hit: 0.95                   # AGV: mac dinh cua AMCL ROS 1 (AMCL.cfg); Nav2 de 0.5/0.5 lam diem
     z_max: 0.05
-    z_rand: 0.5
+    z_rand: 0.05                  #   cua hat dung chi gap ~2.3 lan hat trung binh, 0.95/0.05 -> ~2.9 lan
     z_short: 0.05
     scan_topic: scan
     # AGV: xe xuat phat dung cho bat dau lap ban do (goc frame map), khoi phai bam "2D Pose Estimate"
