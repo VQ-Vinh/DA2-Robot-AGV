@@ -58,6 +58,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 07/10/2026 | Bước 4: Nav2 tự dẫn đường + vùng cấm | #7 |
 | 07/10/2026 | Nhật ký quá trình (tài liệu này) + skill ghi báo cáo | #8 |
 | 07/10/2026 | Bước 5: nhiệm vụ kho (trạm sạc, khu nhận hàng, kịch bản + lệnh), video demo | #9 |
+| 07–08/10/2026 | Sửa vấn đề còn mở: AMCL lệch ở khu phía đông, "collision ahead" trong lối hẹp | #10 |
 
 ---
 
@@ -218,6 +219,46 @@ Các sự cố gặp phải, theo thứ tự:
 - Kênh có giữ tin cũ (transient local) cần phân biệt tin cũ với tin mới.
 - Đọc lại code trước khi chạy bắt được 2 lỗi (sự cố 3–4) mà test có thể không lộ ra.
 
+### 4.6. Sửa 2 vấn đề còn mở: AMCL lệch và "collision ahead" (PR #10)
+- **Mục tiêu:** sửa 2 vấn đề để lại từ bước 4 và 5:
+  - AMCL lệch tới 1.1 m ở khu phía đông kho, có lần làm xe kẹt sát tường.
+  - Bộ điều khiển báo "collision ahead" trong lối hẹp, làm chặng chậm hơn khoảng 50 %.
+- **Cách làm:** theo bài học ở bước 3, đo để biết chuyện gì xảy ra, và đối chiếu tài liệu chính thức (Nav2), dự án tham khảo (Clearpath, linorobot2), mã nguồn gốc (AMCL ROS 1) trước khi sửa. Mỗi giả thuyết được kiểm bằng một phép đo riêng:
+
+| # | Giả thuyết / câu hỏi | Phép đo | Kết quả |
+|---|---|---|---|
+| 1 | Hai vấn đề có liên quan nhau? | 3 lần chạy 4 điểm đích, ghi sai số TF `map → base_footprint` so với vị trí thật mỗi 0.5 s | Sai số lớn **chỉ** ở khu phía đông. 2/3 lần AMCL lạc tới 6 m. "Collision ahead" chỉ xuất hiện **sau** khi lạc, tức là hệ quả |
+| 2 | Collision monitor gây kẹt? | Đọc issue của Nav2 ([navigation2#3313](https://github.com/ros-navigation/navigation2/issues/3313)) | Chế độ "approach" (đang dùng) vẫn cho lùi; xe kẹt vì đã vào sát tường do AMCL lệch. **Không phải nguyên nhân gốc** |
+| 3 | Bản đồ khu phía đông sai? | Chụp scan ở khu phía đông, đặt lên bản đồ theo vị trí thật và theo vị trí AMCL | Theo vị trí thật khớp 97–100 %, theo AMCL 60 % → 5 %. **Bản đồ đúng** |
+| 4 | AMCL bỏ scan vì TF odom trễ? | Với mỗi scan, kiểm tra TF `odom → laser_frame` tại đúng thời điểm của scan; đếm số lần AMCL cập nhật | 100 % scan có TF (scan chỉ mới hơn TF khoảng 3 ms); AMCL cập nhật 157 lần / 27.5 m. **Loại** |
+| 5 | AMCL không sửa gì, chỉ chạy theo odom? | Theo dõi TF `map → odom` (phần hiệu chỉnh của AMCL) | Có hiệu chỉnh nhưng quá ít và sai hướng (cần khoảng (−0.23, −0.37) m, AMCL cho (−0.15, −0.04) m) |
+| 6 | Lidar gắn lệch hoặc lật? | Đọc URDF / TF | `rpy = 0 0 0`, đúng. **Loại** |
+| 7 | AMCL quá tự tin sai? | Chụp đám hạt (`/particle_cloud`) và covariance | Ngược lại: đám hạt **tản rộng tới 1.8 m** theo x (covariance x tới 3.1 m²) |
+| 8 | Thời gian (stamp) của scan lệch? | Đặt scan theo vị trí thật tại `stamp + τ`, τ ∈ [−1, 1] s, tìm τ khớp nhất | τ tốt nhất 0 (55 %) hoặc −0.1 s (36 %), tương đương 2–3 cm. **Loại** |
+| 9 | Mô hình đo của AMCL có phân biệt được hạt đúng? | Tự tính lại đúng công thức likelihood field của AMCL cho từng hạt | Hạt điểm cao nhất cách vị trí thật 1–6 cm (có đủ hạt đúng), nhưng chỉ hơn hạt trung vị khoảng **2.3 lần**. AMCL báo ra trung bình cả đám tản rộng, nên bị kéo lệch |
+
+- **Nguyên nhân** (từ phép đo 7 và 9):
+  - `alpha1–4 = 0.2` (mặc định Nav2) nghĩa là giả định odom sai khoảng 45 %, trong khi odom EKF đo được chỉ sai **2–3 %** quãng đường, và góc lấy từ gyro. Riêng `alpha4` làm đám hạt phình ra mỗi lần quay tại chỗ, mà xe quay tại chỗ rất nhiều vì vùng chết động cơ.
+  - `z_hit/z_rand = 0.5/0.5` (mặc định Nav2) coi một nửa số đo là nhiễu, nên điểm của các hạt ít khác nhau.
+  - Linorobot2 và Clearpath dùng nguyên mặc định này mà vẫn chạy được. Khác biệt ở xe này là quay tại chỗ nhiều (vùng chết) và kho có nhiều lối dài giống nhau.
+- **Cách sửa** (`agv_navigation/config/nav2.yaml`, có ghi chú lý do):
+  - `alpha1–4: 0.05` (tương đương sai số 22 %, vẫn dư nhiều so với 2–3 % đo được).
+  - `z_hit: 0.95, z_rand: 0.05`: mặc định của AMCL ROS 1 (`AMCL.cfg`). Tính trên dữ liệu đã chụp, độ chênh hạt đúng / hạt trung vị tăng từ 2.3 lên 2.9 lần.
+- **Kết quả** (cùng bài test 4 điểm đích, 3 lần mỗi cấu hình):
+
+  | | Mặc định Nav2 | Sau khi sửa |
+  |---|---|---|
+  | Điểm đích thành công | 4/4, 2/4, 2/4 | **4/4, 4/4, 4/4** |
+  | Sai số định vị: 90 % thời gian dưới | 0.24; 4.72; 4.65 m | **0.07; 0.07; 0.07 m** |
+  | Sai số định vị lớn nhất | 0.54; 5.97; 6.08 m | **0.16; 0.15; 0.14 m** |
+  | "Collision ahead" | 0; 0; 26 | **0; 0; 0** |
+
+  Bài nhiệm vụ: `tuan_tra` 9/9 chặng (145.0 s, trước là 152.4 s, còn 4 lần "collision ahead"). `giao_hang` 3 lần đều 3/3 chặng (60.8, 69.2, 63.2 s), 0 lần "collision ahead"; trước khi sửa có một chặng mất 35.7 s với 24 lần "collision ahead". Lần 69.2 s có 1 lần tự thử lại do hệ thống khựng khoảng 1 s (vòng điều khiển tụt 9.6 Hz, TF cũ), không liên quan tới định vị.
+- **Sai lầm trong quá trình:** ban đầu nghi collision monitor (giả thuyết 2), rồi nghi AMCL bỏ scan (4), rồi nghi lệch thời gian (8). Cả ba bị loại bằng đo đạc chứ không phải bằng thử sửa. Cũng đã định đổi `robot_radius` sang khung chữ nhật như Clearpath để giảm "collision ahead", nhưng số liệu cho thấy "collision ahead" là hệ quả của AMCL lệch, nên không đổi, để mỗi lần chỉ đổi một thứ.
+- **Bài học:**
+  - Hai triệu chứng có thể cùng một gốc; đo xem chúng xảy ra theo thứ tự nào trước khi sửa từng cái.
+  - Mặc định của thư viện là điểm xuất phát tốt, nhưng khi số đo cho thấy giả định của nó (ở đây: độ nhiễu odom) sai lệch xa thực tế thì chỉnh theo số đo, và ghi lý do ngay trong file cấu hình.
+
 ---
 
 ## 5. Tổng hợp sai lầm và bài học
@@ -234,13 +275,15 @@ Các sự cố gặp phải, theo thứ tự:
 | Kiểm thử | Báo đã sửa khi chưa nhìn kết quả | Tự xác nhận (chụp màn hình, đo) trước khi báo |
 | Nhiệm vụ | Gửi đích khi Nav2 chưa "active" | Kiểm tra trạng thái vòng đời như thư viện chuẩn |
 | Nhiệm vụ | Đọc nhầm tin cũ của kênh giữ tin | Bỏ qua tin nhận trước khi gửi lệnh |
+| Định vị | Để nguyên tham số AMCL mặc định dù xe quay tại chỗ nhiều và odom tốt hơn giả định | Đo độ nhiễu odom thật, chỉnh `alpha` theo số đo; kiểm giả thuyết bằng phép đo trước khi sửa |
 
 ## 6. Vấn đề còn mở
-1. **AMCL lệch ở khu phía đông kho:** ở 1 trong 5 lần chạy (bước 4), AMCL lệch tới 1.1 m, xe dừng sát tường và collision monitor chặn cả bước lùi, nên xe kẹt. Chưa sửa. Các vị trí của bước 5 không nằm ở khu phía đông nên chưa gặp lại, nhưng vấn đề vẫn còn. Cần tìm cách các dự án tham khảo xử lý.
-2. **Bộ điều khiển hay báo "collision ahead" trong lối hẹp 1 m**, làm có chặng chậm hơn bình thường khoảng 50 % (bước 5). Chưa chỉnh.
-3. **Vùng chết của động cơ:** xe không đi chậm hơn 0.34 m/s và không quay chậm hơn 1.5 rad/s. Nên cải thiện điều khiển tốc độ thấp trên STM32 để hạ `SPD_RPM_MIN`.
-4. **Phần cứng chưa làm:** mở rộng 4 bánh, node cầu nối UART Pi ↔ STM32 (phải có giữ bán kính cua + covariance cho odom), YDLidar, BNO055, INA226.
-5. **Kích thước xe** (track, wheelbase) vẫn là ước lượng, cần đo xe thật.
+Đã giải quyết (xem 4.6): AMCL lệch ở khu phía đông; "collision ahead" trong lối hẹp (từ 24 lần một chặng xuống 0–4 lần một nhiệm vụ).
+
+1. **Hệ thống đôi khi khựng khoảng 1 s** khi máy tải nặng (vòng điều khiển tụt xuống 9.6 Hz, TF cũ). Mới gặp trong mô phỏng trên WSL; cơ chế thử lại xử lý được. Cần theo dõi khi chạy trên Pi 4 (yếu hơn PC).
+2. **Vùng chết của động cơ:** xe không đi chậm hơn 0.34 m/s và không quay chậm hơn 1.5 rad/s. Nên cải thiện điều khiển tốc độ thấp trên STM32 để hạ `SPD_RPM_MIN`.
+3. **Phần cứng chưa làm:** mở rộng 4 bánh, node cầu nối UART Pi ↔ STM32 (phải có giữ bán kính cua + covariance cho odom), YDLidar, BNO055, INA226.
+4. **Kích thước xe** (track, wheelbase) vẫn là ước lượng, cần đo xe thật.
 
 ## 7. Cách ghi tiếp tài liệu này
 Mỗi khi xong một phần việc hoặc sửa xong một sự cố, thêm vào mục tương ứng theo quy ước ở đầu file: mục tiêu, cách làm, sai lầm, nguyên nhân, cách sửa, kết quả có số liệu, bài học. Quy tắc này nằm trong skill `.claude/skills/report-log`.
