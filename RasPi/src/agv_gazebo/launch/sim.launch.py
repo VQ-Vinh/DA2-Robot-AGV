@@ -4,10 +4,11 @@ Vi du:
   ros2 launch agv_gazebo sim.launch.py                 # GUI Gazebo (co bang Teleop) + RViz + rqt_robot_steering
   ros2 launch agv_gazebo sim.launch.py rviz:=false steering:=false
   ros2 launch agv_gazebo sim.launch.py headless:=true  # chi chay server, khong mo cua so nao
+  ros2 launch agv_gazebo sim.launch.py slam:=true      # them slam_toolbox, RViz hien ban do
 """
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (Command, LaunchConfiguration, PathJoinSubstitution,
                                   PythonExpression)
@@ -24,21 +25,29 @@ def generate_launch_description():
     headless = LaunchConfiguration('headless')
     rviz = LaunchConfiguration('rviz')
     steering = LaunchConfiguration('steering')
+    slam = LaunchConfiguration('slam')
 
     robot_description = ParameterValue(
         Command(['xacro ', PathJoinSubstitution([desc_pkg, 'urdf', 'agv.urdf.xacro'])]),
         value_type=str)
 
-    # -r: chay ngay; -s: chi server (khong GUI) khi headless:=true
-    # --gui-config: giao dien co them bang Teleop
-    gz_args = [PythonExpression(["'-r -s ' if '", headless, "' == 'true' else '-r '"]),
-               '--gui-config ', PathJoinSubstitution([gz_pkg, 'config', 'gui.config']), ' ',
-               world]
+    # Server (vat ly, cam bien) va cua so Gazebo chay 2 tien trinh rieng, giong linorobot2.
+    # Chi server la bat buoc: cua so Gazebo chet (driver GPU trong WSL thinh thoang crash
+    # luc khoi tao OpenGL) thi mo phong, RViz, SLAM van chay; mo lai bang `gz sim -g`.
+    gz_sim_launch = PathJoinSubstitution([FindPackageShare('ros_gz_sim'), 'launch', 'gz_sim.launch.py'])
 
-    gazebo = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution([FindPackageShare('ros_gz_sim'), 'launch', 'gz_sim.launch.py'])),
-        launch_arguments={'gz_args': gz_args, 'on_exit_shutdown': 'true'}.items())
+    gazebo_server = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(gz_sim_launch),
+        launch_arguments={'gz_args': ['-r -s ', world], 'on_exit_shutdown': 'true'}.items())
+
+    # Mo cua so sau server vai giay, de 2 tien trinh khong khoi tao OpenGL cung luc
+    gazebo_gui = TimerAction(period=5.0, actions=[IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(gz_sim_launch),
+        launch_arguments={
+            # --gui-config: giao dien co them bang Teleop
+            'gz_args': ['-g --gui-config ', PathJoinSubstitution([gz_pkg, 'config', 'gui.config'])],
+            'on_exit_shutdown': 'false'}.items())],
+        condition=UnlessCondition(headless))
 
     robot_state_publisher = Node(
         package='robot_state_publisher', executable='robot_state_publisher',
@@ -78,11 +87,25 @@ def generate_launch_description():
             PathJoinSubstitution([FindPackageShare('agv_localization'), 'launch', 'ekf.launch.py'])),
         launch_arguments={'use_sim_time': 'true'}.items())
 
+    # Lap ban do: dung chung launch voi xe that
+    slam_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([FindPackageShare('agv_navigation'), 'launch', 'slam.launch.py'])),
+        launch_arguments={'use_sim_time': 'true'}.items(),
+        condition=IfCondition(slam))
+
+    # RViz: khi co SLAM thi nhin tu tren xuong theo frame map, hien ban do
+    rviz_rule = ["'", rviz, "' == 'true' and '", headless, "' != 'true' and '", slam, "' "]
     rviz_node = Node(
         package='rviz2', executable='rviz2',
         arguments=['-d', PathJoinSubstitution([desc_pkg, 'rviz', 'agv.rviz'])],
         parameters=[{'use_sim_time': True}],
-        condition=IfCondition(rviz))
+        condition=IfCondition(PythonExpression(rviz_rule + ["!= 'true'"])))
+    rviz_slam_node = Node(
+        package='rviz2', executable='rviz2',
+        arguments=['-d', PathJoinSubstitution([FindPackageShare('agv_navigation'), 'rviz', 'slam.rviz'])],
+        parameters=[{'use_sim_time': True}],
+        condition=IfCondition(PythonExpression(rviz_rule + ["== 'true'"])))
 
     # 2 thanh truot van toc, gui /cmd_vel qua ROS -> dung duoc ca voi xe that.
     # Lan dau: bo tick o "stamped" (bridge nhan Twist), rqt se nho lua chon nay.
@@ -102,15 +125,20 @@ def generate_launch_description():
         DeclareLaunchArgument('x', default_value='-4.5', description='Vi tri xuat phat x (m)'),
         DeclareLaunchArgument('y', default_value='0.0', description='Vi tri xuat phat y (m)'),
         DeclareLaunchArgument('yaw', default_value='0.0', description='Huong xuat phat (rad)'),
+        DeclareLaunchArgument('slam', default_value='false',
+                              description='true: chay slam_toolbox lap ban do'),
         DeclareLaunchArgument('rpm_min', default_value='100.0',
                               description='RPM nho nhat cua banh (vung chet firmware), 0 = tat'),
-        gazebo,
+        gazebo_server,
+        gazebo_gui,
         robot_state_publisher,
         spawn,
         bridge,
         motor_model,
         wheel_odom,
         ekf,
+        slam_launch,
         rviz_node,
+        rviz_slam_node,
         steering_node,
     ])
