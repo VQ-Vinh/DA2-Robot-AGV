@@ -44,8 +44,11 @@
       <max_angular_acceleration>3.0</max_angular_acceleration>
       <min_angular_acceleration>-3.0</min_angular_acceleration>
       <topic>/model/agv/cmd_vel</topic>
-      <odom_topic>/odom</odom_topic>
-      <tf_topic>/tf</tf_topic>
+      <!-- Odom banh xe tho (khong covariance). Node wheel_odom them covariance roi gui
+           /wheel/odom cho EKF; EKF moi phat /odom va TF odom -> base_footprint.
+           TF cua DiffDrive khong duoc bridge. -->
+      <odom_topic>/model/agv/odom</odom_topic>
+      <tf_topic>/model/agv/odom_tf</tf_topic>
       <frame_id>odom</frame_id>
       <child_frame_id>base_footprint</child_frame_id>
       <odom_publish_frequency>30</odom_publish_frequency>
