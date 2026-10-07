@@ -102,7 +102,7 @@ def generate_launch_description():
         launch_arguments={'use_sim_time': 'true'}.items(),
         condition=IfCondition(nav))
 
-    # RViz: SLAM -> nhin tu tren xuong, hien ban do; Nav2 -> cau hinh mac dinh cua Nav2
+    # RViz: SLAM -> nhin tu tren xuong, hien ban do; Nav2 -> nav.rviz (goc: cau hinh mac dinh cua Nav2,
     # (co nut "2D Pose Estimate", "Nav2 Goal"); con lai -> xem xe theo frame odom
     def rviz(config, mode):
         # PythonExpression ghep chuoi: "'true' == 'true' and 'false' != 'true' and ..."
@@ -119,7 +119,7 @@ def generate_launch_description():
 
     rviz_node = rviz(PathJoinSubstitution([desc_pkg, 'rviz', 'agv.rviz']), 'plain')
     rviz_slam_node = rviz(PathJoinSubstitution([FindPackageShare('agv_navigation'), 'rviz', 'slam.rviz']), 'slam')
-    rviz_nav_node = rviz(PathJoinSubstitution([FindPackageShare('nav2_bringup'), 'rviz', 'nav2_default_view.rviz']), 'nav')
+    rviz_nav_node = rviz(PathJoinSubstitution([FindPackageShare('agv_navigation'), 'rviz', 'nav.rviz']), 'nav')
 
     # 2 thanh truot van toc, gui /cmd_vel qua ROS -> dung duoc ca voi xe that.
     # Lan dau: bo tick o "stamped" (bridge nhan Twist), rqt se nho lua chon nay.
