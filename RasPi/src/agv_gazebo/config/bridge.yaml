@@ -5,12 +5,27 @@
   gz_type_name: "gz.msgs.Clock"
   direction: GZ_TO_ROS
 
-# Lenh van toc tu ROS (teleop, Nav2) -> DiffDrive
+# Lenh van toc di qua motor_model truoc khi toi DiffDrive, giong xe that di qua firmware:
+#   teleop / Nav2 -> /cmd_vel -> motor_model -> /cmd_vel_limited -> DiffDrive
+# Bang Teleop trong Gazebo gui len gz /cmd_vel, chuyen sang ROS de cung di qua motor_model.
 - ros_topic_name: "/cmd_vel"
   gz_topic_name: "/cmd_vel"
   ros_type_name: "geometry_msgs/msg/Twist"
   gz_type_name: "gz.msgs.Twist"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/cmd_vel_limited"
+  gz_topic_name: "/model/agv/cmd_vel"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "gz.msgs.Twist"
   direction: ROS_TO_GZ
+
+# Vi tri that, chi de danh gia sai so odom / EKF
+- ros_topic_name: "/ground_truth"
+  gz_topic_name: "/ground_truth"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS
 
 - ros_topic_name: "/odom"
   gz_topic_name: "/odom"
