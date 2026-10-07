@@ -6,4 +6,7 @@ find_package(ament_cmake REQUIRED)
 install(DIRECTORY launch worlds config
   DESTINATION share/${PROJECT_NAME})
 
+install(PROGRAMS scripts/motor_model.py
+  DESTINATION lib/${PROJECT_NAME})
+
 ament_package()

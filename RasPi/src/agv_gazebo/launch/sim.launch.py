@@ -58,6 +58,14 @@ def generate_launch_description():
                      'use_sim_time': True}],
         output='screen')
 
+    # Gioi han dong co nhu firmware STM32: /cmd_vel -> /cmd_vel_limited -> DiffDrive.
+    # rpm_min:=0 de tat vung chet, xem xe "ly tuong" chay ra sao.
+    motor_model = Node(
+        package='agv_gazebo', executable='motor_model.py',
+        parameters=[{'rpm_min': ParameterValue(LaunchConfiguration('rpm_min'), value_type=float),
+                     'use_sim_time': True}],
+        output='screen')
+
     rviz_node = Node(
         package='rviz2', executable='rviz2',
         arguments=['-d', PathJoinSubstitution([desc_pkg, 'rviz', 'agv.rviz'])],
@@ -82,10 +90,13 @@ def generate_launch_description():
         DeclareLaunchArgument('x', default_value='-4.5', description='Vi tri xuat phat x (m)'),
         DeclareLaunchArgument('y', default_value='0.0', description='Vi tri xuat phat y (m)'),
         DeclareLaunchArgument('yaw', default_value='0.0', description='Huong xuat phat (rad)'),
+        DeclareLaunchArgument('rpm_min', default_value='100.0',
+                              description='RPM nho nhat cua banh (vung chet firmware), 0 = tat'),
         gazebo,
         robot_state_publisher,
         spawn,
         bridge,
+        motor_model,
         rviz_node,
         steering_node,
     ])
