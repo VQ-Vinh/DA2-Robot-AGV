@@ -6,6 +6,7 @@ Vi du:
   ros2 launch agv_gazebo sim.launch.py headless:=true  # chi chay server, khong mo cua so nao
   ros2 launch agv_gazebo sim.launch.py slam:=true      # them slam_toolbox, RViz hien ban do
   ros2 launch agv_gazebo sim.launch.py nav:=true       # Nav2 tren ban do da lap, bam "Nav2 Goal" de xe tu di
+  ros2 launch agv_gazebo sim.launch.py nav:=true mission:=giao_hang   # + chay nhiem vu kho tu dong
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
@@ -102,6 +103,13 @@ def generate_launch_description():
         launch_arguments={'use_sim_time': 'true'}.items(),
         condition=IfCondition(nav))
 
+    # Dieu phoi nhiem vu kho (luon chay cung Nav2, cho lenh; mission:=<ten> de chay ngay)
+    mission_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([FindPackageShare('agv_mission'), 'launch', 'mission.launch.py'])),
+        launch_arguments={'use_sim_time': 'true'}.items(),
+        condition=IfCondition(nav))
+
     # RViz: SLAM -> nhin tu tren xuong, hien ban do; Nav2 -> nav.rviz (goc: cau hinh mac dinh cua Nav2,
     # (co nut "2D Pose Estimate", "Nav2 Goal"); con lai -> xem xe theo frame odom
     def rviz(config, mode):
@@ -143,6 +151,9 @@ def generate_launch_description():
                               description='true: chay slam_toolbox lap ban do'),
         DeclareLaunchArgument('nav', default_value='false',
                               description='true: chay Nav2 tren ban do maps/warehouse (khong dung cung slam)'),
+        DeclareLaunchArgument('mission', default_value='',
+                              description='Nhiem vu kho chay ngay khi Nav2 san sang (can nav:=true)'),
+        DeclareLaunchArgument('repeat', default_value='1', description='So lan lap nhiem vu tu dong'),
         DeclareLaunchArgument('rpm_min', default_value='100.0',
                               description='RPM nho nhat cua banh (vung chet firmware), 0 = tat'),
         gazebo_server,
@@ -155,6 +166,7 @@ def generate_launch_description():
         ekf,
         slam_launch,
         nav_launch,
+        mission_launch,
         rviz_node,
         rviz_slam_node,
         rviz_nav_node,
