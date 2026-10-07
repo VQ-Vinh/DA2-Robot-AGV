@@ -7,7 +7,7 @@ ROS 2 **Jazzy** (Ubuntu 24.04) + **Gazebo Harmonic**. Chạy mô phỏng trên P
 | `agv_description` | URDF/xacro xe skid-steer 4 bánh, lidar, IMU; cấu hình RViz |
 | `agv_gazebo` | World kho hàng, bridge Gazebo ↔ ROS 2, launch mô phỏng, node riêng cho mô phỏng |
 | `agv_localization` | EKF gộp odom bánh xe + IMU → `/odom`; dùng chung cho mô phỏng và xe thật |
-| `agv_navigation` | SLAM (slam_toolbox), bản đồ kho `maps/warehouse`, RViz cho SLAM; dùng chung cho mô phỏng và xe thật |
+| `agv_navigation` | SLAM (slam_toolbox), bản đồ kho `maps/warehouse`, dẫn đường Nav2 + vùng cấm; dùng chung cho mô phỏng và xe thật |
 
 ## Tạo workspace (một lần)
 
@@ -53,6 +53,14 @@ Build lại chỉ khi thêm file mới. Sửa file có sẵn (`.xacro`, `.sdf`, 
    ```
 6. **Tắt**: Ctrl+C ở terminal đang chạy `ros2 launch`.
 
+**Cho xe tự đi (Nav2)** trên bản đồ đã lưu:
+```bash
+ros2 launch agv_gazebo sim.launch.py nav:=true
+```
+- RViz mở cấu hình của Nav2: bản đồ kho, costmap (vùng màu quanh kệ = vùng nguy hiểm), 2 pallet hiện thành vùng cấm.
+- Xe đã được đặt sẵn vị trí ban đầu. Nếu đặt xe chỗ khác (`x:= y:=`), bấm **2D Pose Estimate** rồi kéo chuột tại chỗ xe đứng.
+- Bấm **Nav2 Goal**, click vào điểm đích trên bản đồ rồi kéo chuột để chọn hướng. Xe tự lập đường (đường xanh) và đi tới.
+
 Sự cố thường gặp:
 
 | Hiện tượng | Cách xử lý |
@@ -82,23 +90,24 @@ Chỉ xem model, không cần Gazebo: `ros2 launch agv_description display.launc
 
 ## Mô hình động cơ (`motor_model`)
 
-DiffDrive của Gazebo quay bánh đúng tốc độ được yêu cầu, kể cả rất chậm. Xe thật thì không: firmware STM32 ép mọi lệnh khác 0 vào khoảng **100–270 RPM** (`SPD_RPM_MIN/MAX` trong `STM32/App/Inc/speed_ctrl.h`), vì dưới ~30 % duty động cơ không quay nổi. Node `motor_model` đứng giữa `/cmd_vel` và Gazebo, làm y hệt firmware:
+DiffDrive của Gazebo quay bánh đúng tốc độ được yêu cầu, kể cả rất chậm. Xe thật thì không: firmware STM32 ép mọi lệnh khác 0 vào khoảng **100–270 RPM** (`SPD_RPM_MIN/MAX` trong `STM32/App/Inc/speed_ctrl.h`), vì dưới ~30 % duty động cơ không quay nổi. Node `motor_model` đứng giữa `/cmd_vel` và Gazebo, làm y hệt những gì node cầu nối Pi ↔ STM32 (bước 1–2) và firmware (bước 3) sẽ làm:
 
 ```
 teleop / Nav2 -> /cmd_vel -> motor_model -> /cmd_vel_limited -> DiffDrive (gz /model/agv/cmd_vel)
 ```
 
-1. Bánh vượt 270 RPM: thu nhỏ cả hai bên cùng tỉ lệ (giữ độ cong đường đi).
-2. Bánh khác 0 mà dưới 100 RPM: đẩy lên 100 RPM (= 0.34 m/s).
+1. **Giữ bán kính cua** (`preserve_turning_radius`, giống `diff_drive_controller` của Clearpath Husky): bánh khác 0 mà dưới 100 RPM thì nhân **cả hai bánh** cùng tỉ lệ cho tới khi bánh chậm nhất đạt 100 RPM. Xe đi nhanh hơn nhưng đúng đường cong.
+2. Bánh vượt 270 RPM: thu nhỏ cả hai bên cùng tỉ lệ (cũng giữ bán kính cua).
+3. Firmware: bánh nào còn khác 0 mà dưới 100 RPM thì đẩy lên 100 RPM (= 0.34 m/s).
 
-Hệ quả cần nhớ khi chỉnh Nav2:
+| Xin | Xe chạy | Ghi chú |
+|---|---|---|
+| tiến 0.10 m/s | tiến **0.34 m/s** | không đi chậm hơn được |
+| quay tại chỗ 0.5 rad/s | quay **1.51 rad/s** | |
+| v = 0.25, ω = 0.33 (bán kính 0.76 m) | v = 0.48, ω = 0.64 (bán kính 0.76 m) | nhanh hơn, **đúng đường cong** |
+| tiến 1.5 m/s | tiến 0.92 m/s (tối đa) | |
 
-| Xin | Xe thật chạy |
-|---|---|
-| tiến 0.10 m/s | tiến **0.34 m/s** |
-| quay tại chỗ 0.5 rad/s | quay **1.51 rad/s** |
-| v = 0.3, ω = 0.6 (bán kính 0.5 m) | v = 0.39, ω = 0.21 (bán kính **1.9 m**) |
-| tiến 1.5 m/s | tiến 0.92 m/s (tối đa) |
+> **Node cầu nối Pi ↔ STM32 trên xe thật phải làm bước 1.** Nếu chỉ có bước 3 (firmware), lệnh `v = 0.25, ω = 0.33` thành hai bánh cùng 100 RPM: xe đi thẳng, **mất lái**. Trong mô phỏng, Nav2 khi đó trôi vào kệ ở lối hẹp 1 m và hỏng 3/4 điểm đích. Tắt bước 1 để thử: `--ros-args -p preserve_turning_radius:=false`.
 
 Bảng Teleop trong Gazebo cũng đi qua `motor_model` (bridge chuyển gz `/cmd_vel` sang ROS `/cmd_vel`).
 
@@ -152,6 +161,35 @@ Kết quả (lộ trình `drive_route.py`, ~52 m qua mọi lối đi, chấm b�
 | Có vùng chết (mặc định, quay ≥ 1.5 rad/s) | **99.4 %** | **2.7 cm** |
 
 Bản đồ trong repo (`maps/warehouse.pgm/.yaml`) lấy từ lần chạy có vùng chết. Gốc frame `map` là chỗ xe xuất phát (world x = −4.5, y = 0). Pallet 15 cm **không có** trên bản đồ vì lidar quét cao 17 cm, nên cần vùng cấm ở bước Nav2.
+
+## Dẫn đường: Nav2
+
+```bash
+ros2 launch agv_gazebo sim.launch.py nav:=true       # mô phỏng
+ros2 launch agv_navigation navigation.launch.py      # xe thật (cần /scan, /odom, TF)
+```
+
+Làm theo [linorobot2](https://github.com/linorobot/linorobot2):
+- `agv_navigation/config/nav2.yaml` là **file mặc định của Nav2 Jazzy**, chỉ thay khối bộ điều khiển bằng khối của linorobot2. Khối đó dùng **RotationShim** (quay tại chỗ về hướng đường đi) kết hợp **Regulated Pure Pursuit** (bám đường, ~0.4 m/s). Kiểu chạy này hợp với xe có vùng chết.
+- Đổi thêm: bán kính xe 0.25 m, lidar 10 m, AMCL đặt sẵn vị trí ban đầu ở gốc bản đồ.
+- `navigation.launch.py` gọi thẳng `bringup_launch.py` của Nav2 (map_server + AMCL + navigation).
+
+**Vùng cấm cho pallet.** Lidar quét cao 17 cm không thấy pallet 15 cm. Lần chạy đầu, Nav2 lập đường sát pallet_2 và xe húc vào. Bánh quay trượt nên odom vẫn tăng, AMCL bị kéo lệch 3.8 m. Đã thêm **keepout filter** của Nav2, cấu hình lấy từ [nav2_costmap_filters_demo](https://github.com/ros-navigation/navigation2_tutorials):
+- `maps/keepout_mask.pgm/.yaml`: mặt nạ cùng kích thước với bản đồ, pixel đen là vùng cấm.
+- Tạo lại khi đổi bản đồ hoặc chỗ pallet: `python3 scripts/make_keepout_mask.py` (sửa danh sách `ZONES` trong file).
+
+Kết quả: 4 điểm đích qua các lối đi (lối dưới, phía đông giữa 2 pallet, lối hẹp giữa hàng A–B, về chỗ xuất phát), có vùng chết động cơ:
+
+| Cấu hình | Thành công | Thời gian mỗi điểm | Lệch thật tại đích |
+|---|---|---|---|
+| Nav2 mặc định + linorobot2, chưa vùng cấm | 1/4 | — | xe húc pallet, AMCL lệch 3.8 m |
+| + vùng cấm pallet | 3/4 | — | mất lái trong lối hẹp (xem mục mô hình động cơ) |
+| + giữ bán kính cua, lần 1–3 | **4/4, 4/4, 4/4** | 13–44 s | 0.10–0.30 m |
+| + giữ bán kính cua, lần 4 | 1/4 | — | xem "Vấn đề còn mở" |
+
+Dung sai đích của Nav2 là 0.25 m, tính theo vị trí AMCL. Lệch thật có thể lớn hơn một chút vì AMCL tự nó lệch khoảng 0.1–0.2 m.
+
+**Vấn đề còn mở.** Ở lần 4, khi xe chạy dọc phía đông kho, AMCL lệch dần 0.4 rồi 1.1 m theo hướng đông–tây. Xe thật đi quá về phía đông, dừng cách tường đông khoảng 7 cm. Collision monitor (cấu hình mặc định) thấy tường quá sát nên chặn mọi lệnh, kể cả lùi và xoay của bước tự gỡ, nên xe kẹt luôn. AMCL và collision monitor hiện đang dùng nguyên mặc định của Nav2, giống linorobot2. Cần tìm hiểu tiếp: vì sao AMCL lệch ở khu phía đông (khu trống, chỉ có tường và đầu kệ), và cấu hình collision monitor sao cho vẫn cho phép lùi ra.
 
 ## Topic
 
