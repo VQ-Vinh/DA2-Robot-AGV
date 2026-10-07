@@ -5,6 +5,7 @@ Vi du:
   ros2 launch agv_gazebo sim.launch.py rviz:=false steering:=false
   ros2 launch agv_gazebo sim.launch.py headless:=true  # chi chay server, khong mo cua so nao
   ros2 launch agv_gazebo sim.launch.py slam:=true      # them slam_toolbox, RViz hien ban do
+  ros2 launch agv_gazebo sim.launch.py nav:=true       # Nav2 tren ban do da lap, bam "Nav2 Goal" de xe tu di
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
@@ -23,9 +24,9 @@ def generate_launch_description():
 
     world = LaunchConfiguration('world')
     headless = LaunchConfiguration('headless')
-    rviz = LaunchConfiguration('rviz')
     steering = LaunchConfiguration('steering')
     slam = LaunchConfiguration('slam')
+    nav = LaunchConfiguration('nav')
 
     robot_description = ParameterValue(
         Command(['xacro ', PathJoinSubstitution([desc_pkg, 'urdf', 'agv.urdf.xacro'])]),
@@ -94,18 +95,31 @@ def generate_launch_description():
         launch_arguments={'use_sim_time': 'true'}.items(),
         condition=IfCondition(slam))
 
-    # RViz: khi co SLAM thi nhin tu tren xuong theo frame map, hien ban do
-    rviz_rule = ["'", rviz, "' == 'true' and '", headless, "' != 'true' and '", slam, "' "]
-    rviz_node = Node(
-        package='rviz2', executable='rviz2',
-        arguments=['-d', PathJoinSubstitution([desc_pkg, 'rviz', 'agv.rviz'])],
-        parameters=[{'use_sim_time': True}],
-        condition=IfCondition(PythonExpression(rviz_rule + ["!= 'true'"])))
-    rviz_slam_node = Node(
-        package='rviz2', executable='rviz2',
-        arguments=['-d', PathJoinSubstitution([FindPackageShare('agv_navigation'), 'rviz', 'slam.rviz'])],
-        parameters=[{'use_sim_time': True}],
-        condition=IfCondition(PythonExpression(rviz_rule + ["== 'true'"])))
+    # Dan duong Nav2 tren ban do da lap: dung chung launch voi xe that
+    nav_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([FindPackageShare('agv_navigation'), 'launch', 'navigation.launch.py'])),
+        launch_arguments={'use_sim_time': 'true'}.items(),
+        condition=IfCondition(nav))
+
+    # RViz: SLAM -> nhin tu tren xuong, hien ban do; Nav2 -> nav.rviz (goc: cau hinh mac dinh cua Nav2,
+    # (co nut "2D Pose Estimate", "Nav2 Goal"); con lai -> xem xe theo frame odom
+    def rviz(config, mode):
+        # PythonExpression ghep chuoi: "'true' == 'true' and 'false' != 'true' and ..."
+        cond = ["'", LaunchConfiguration('rviz'), "' == 'true' and '", headless, "' != 'true' and "]
+        if mode == 'slam':
+            cond += ["'", slam, "' == 'true'"]
+        elif mode == 'nav':
+            cond += ["'", nav, "' == 'true' and '", slam, "' != 'true'"]
+        else:
+            cond += ["'", slam, "' != 'true' and '", nav, "' != 'true'"]
+        return Node(package='rviz2', executable='rviz2', arguments=['-d', config],
+                    parameters=[{'use_sim_time': True}],
+                    condition=IfCondition(PythonExpression(cond)))
+
+    rviz_node = rviz(PathJoinSubstitution([desc_pkg, 'rviz', 'agv.rviz']), 'plain')
+    rviz_slam_node = rviz(PathJoinSubstitution([FindPackageShare('agv_navigation'), 'rviz', 'slam.rviz']), 'slam')
+    rviz_nav_node = rviz(PathJoinSubstitution([FindPackageShare('agv_navigation'), 'rviz', 'nav.rviz']), 'nav')
 
     # 2 thanh truot van toc, gui /cmd_vel qua ROS -> dung duoc ca voi xe that.
     # Lan dau: bo tick o "stamped" (bridge nhan Twist), rqt se nho lua chon nay.
@@ -127,6 +141,8 @@ def generate_launch_description():
         DeclareLaunchArgument('yaw', default_value='0.0', description='Huong xuat phat (rad)'),
         DeclareLaunchArgument('slam', default_value='false',
                               description='true: chay slam_toolbox lap ban do'),
+        DeclareLaunchArgument('nav', default_value='false',
+                              description='true: chay Nav2 tren ban do maps/warehouse (khong dung cung slam)'),
         DeclareLaunchArgument('rpm_min', default_value='100.0',
                               description='RPM nho nhat cua banh (vung chet firmware), 0 = tat'),
         gazebo_server,
@@ -138,7 +154,9 @@ def generate_launch_description():
         wheel_odom,
         ekf,
         slam_launch,
+        nav_launch,
         rviz_node,
         rviz_slam_node,
+        rviz_nav_node,
         steering_node,
     ])

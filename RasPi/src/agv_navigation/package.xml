@@ -3,7 +3,7 @@
 <package format="3">
   <name>agv_navigation</name>
   <version>0.1.0</version>
-  <description>SLAM (slam_toolbox), ban do kho va dan duong cho AGV; dung chung cho mo phong va xe that</description>
+  <description>SLAM (slam_toolbox), ban do kho va dan duong Nav2 cho AGV; dung chung cho mo phong va xe that</description>
   <maintainer email="technical@samaser.com.vn">VO QUANG VINH</maintainer>
   <license>TODO: License declaration</license>
 
@@ -11,6 +11,10 @@
 
   <exec_depend>slam_toolbox</exec_depend>
   <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>nav2_rotation_shim_controller</exec_depend>
+  <exec_depend>nav2_regulated_pure_pursuit_controller</exec_depend>
   <exec_depend>rviz2</exec_depend>
 
   <export>
