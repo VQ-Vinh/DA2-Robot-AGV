@@ -1,2 +1,4 @@
 # RasPi/ duoc WSL va Pi doc truc tiep -> luon giu LF, ke ca khi checkout tren Windows
 RasPi/** text=auto eol=lf
+# Ban do occupancy grid la anh nhi phan, khong doi xuong dong
+*.pgm binary
