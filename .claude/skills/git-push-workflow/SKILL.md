@@ -124,6 +124,15 @@ Trước khi sang bước sau, chạy `git log --oneline main..HEAD` và đọc 
 commit đó có kể được câu chuyện không? Nếu không, sửa lại bằng `git reset --soft`
 rồi chia lại — lúc này chưa push nên sửa còn rẻ.
 
+### Cập nhật REPORT.md trước khi push
+
+Nếu phần việc này xong một bước, sửa một sự cố, hoặc rút lại một kết luận sai,
+cập nhật `REPORT.md` theo skill `report-log` — **ghi cả sai lầm và cách sửa**,
+không chỉ kết quả cuối — rồi commit riêng:
+`docs: update progress report for <phần việc>`. Báo cáo đồ án cần quá trình
+thật (sai → tìm nguyên nhân → sửa → cải thiện), và chi tiết đó chỉ còn đủ khi
+ghi ngay lúc vừa làm xong.
+
 ## Bước 4 — Push
 
 ```bash
