@@ -55,6 +55,16 @@
       <topic>/joint_states</topic>
     </plugin>
 
+    <!-- Vi tri that cua xe trong world (ground truth), chi de so sanh voi /odom va EKF.
+         Khong bridge TF cua no, de khong tranh frame voi odom. -->
+    <plugin filename="gz-sim-odometry-publisher-system" name="gz::sim::systems::OdometryPublisher">
+      <odom_frame>world</odom_frame>
+      <robot_base_frame>base_footprint</robot_base_frame>
+      <odom_topic>/ground_truth</odom_topic>
+      <tf_topic>/model/agv/ground_truth_tf</tf_topic>
+      <odom_publish_frequency>30</odom_publish_frequency>
+      <dimensions>2</dimensions>
+    </plugin>
   </gazebo>
 
   <!-- Lidar 2D: thong so gan YDLidar X4 (360 do, ~7 Hz, 0.12-10 m) -->

@@ -20,6 +20,12 @@
   gz_type_name: "gz.msgs.Twist"
   direction: ROS_TO_GZ
 
+# Vi tri that, chi de danh gia sai so odom / EKF
+- ros_topic_name: "/ground_truth"
+  gz_topic_name: "/ground_truth"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS
 
 - ros_topic_name: "/odom"
   gz_topic_name: "/odom"
