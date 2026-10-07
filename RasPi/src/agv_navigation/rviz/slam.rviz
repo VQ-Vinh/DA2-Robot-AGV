@@ -120,8 +120,6 @@ Visualization Manager:
       Class: rviz_default_plugins/TF
   Value: true
   Views:
-    # Nhin tu tren xuong. Goc frame map = cho xe xuat phat (mac dinh x = -4.5 trong world),
-    # nen tam kho nam o x = +4.5 tren ban do.
     Current:
       Class: rviz_default_plugins/TopDownOrtho
       Name: Current View
