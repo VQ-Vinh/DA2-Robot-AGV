@@ -5,7 +5,8 @@ ROS 2 **Jazzy** (Ubuntu 24.04) + **Gazebo Harmonic**. Chạy mô phỏng trên P
 | Package | Nội dung |
 |---|---|
 | `agv_description` | URDF/xacro xe skid-steer 4 bánh, lidar, IMU; cấu hình RViz |
-| `agv_gazebo` | World kho hàng, bridge Gazebo ↔ ROS 2, launch mô phỏng |
+| `agv_gazebo` | World kho hàng, bridge Gazebo ↔ ROS 2, launch mô phỏng, node riêng cho mô phỏng |
+| `agv_localization` | EKF gộp odom bánh xe + IMU → `/odom`; dùng chung cho mô phỏng và xe thật |
 
 ## Tạo workspace (một lần)
 
@@ -15,6 +16,7 @@ Code nằm trong repo; workspace trong WSL chỉ symlink tới đây, nên sửa
 mkdir -p ~/agv_ws/src
 ln -sfn /mnt/d/MyBK/HK261/DA2/Src/RasPi/src/agv_description ~/agv_ws/src/agv_description
 ln -sfn /mnt/d/MyBK/HK261/DA2/Src/RasPi/src/agv_gazebo      ~/agv_ws/src/agv_gazebo
+ln -sfn /mnt/d/MyBK/HK261/DA2/Src/RasPi/src/agv_localization ~/agv_ws/src/agv_localization
 cd ~/agv_ws && colcon build --symlink-install
 source ~/agv_ws/install/setup.bash
 ```
@@ -61,16 +63,36 @@ Hệ quả cần nhớ khi chỉnh Nav2:
 
 Bảng Teleop trong Gazebo cũng đi qua `motor_model` (bridge chuyển gz `/cmd_vel` sang ROS `/cmd_vel`).
 
+## Định vị: EKF gộp odom bánh xe + IMU
+
+```
+Gazebo DiffDrive -> /sim/wheel_odom -> wheel_odom (thêm covariance) -> /wheel/odom --+
+                                                                                     +--> EKF -> /odom + TF odom -> base_footprint
+Gazebo IMU ------------------------------------------------------------> /imu --------+
+```
+
+- Odom bánh xe tính góc rất kém vì skid-steer trượt ngang khi quay. EKF lấy **vx** từ bánh xe và **tốc độ quay wz từ gyro** (cấu hình và giải thích trong `agv_localization/config/ekf.yaml`).
+- Không dùng yaw tuyệt đối của BNO055: nó dựa vào từ kế, trong kho nhiều sắt thép nên không tin được.
+- Gyro trong mô phỏng có bias nhỏ (~0.03 °/s) giống IMU thật, nên góc vẫn trôi chậm theo thời gian. Phần trôi này để SLAM/AMCL sửa ở bước sau.
+- Trên xe thật, node cầu nối STM32 phải gửi `/wheel/odom` **có covariance** (giống `wheel_odom.py`) và BNO055 gửi `/imu`; khi đó chạy `ros2 launch agv_localization ekf.launch.py` là xong.
+
 ## Đo sai số odom
 
 `/ground_truth` là vị trí thật của xe trong world (chỉ có trong mô phỏng). So sánh với odom:
 
 ```bash
-ros2 run agv_gazebo odom_drift.py                                         # /odom bánh xe
-ros2 run agv_gazebo odom_drift.py --ros-args -p odom_topic:=/odometry/filtered
+ros2 run agv_gazebo odom_drift.py                                          # /odom (EKF)
+ros2 run agv_gazebo odom_drift.py --ros-args -p odom_topic:=/wheel/odom    # odom bánh xe
 ```
 
-Lái xe một lúc rồi Ctrl+C, node in sai số vị trí, sai số góc và % quãng đường. Lái thử ~5.5 m có quay tại chỗ và chạy vòng: odom bánh xe lệch **0.30 m (5.4 %)** và **góc lệch tới 21°**. Nguyên nhân chính là bánh trượt ngang khi skid-steer quay, nên cần IMU để sửa góc.
+Lái xe một lúc rồi Ctrl+C, node in sai số vị trí, sai số góc và % quãng đường. Muốn đo hai nguồn cùng lúc thì đặt tên node khác nhau: thêm `-r __node:=drift_wheel`.
+
+Kết quả (xuất phát `x:=-4.4 y:=-2.5 yaw:=1.5708`, ~7.5 m gồm đi thẳng, quay tại chỗ, chạy vòng; 2 lần chạy):
+
+| | Lệch vị trí cuối | Lệch góc lớn nhất |
+|---|---|---|
+| Odom bánh xe `/wheel/odom` | 0.20–0.24 m (2.7–3.0 %) | 9.0–9.1° |
+| EKF `/odom` | **0.09–0.12 m (1.2–1.5 %)** | **2.4–3.4°** |
 
 ## Topic
 
@@ -79,7 +101,9 @@ Lái xe một lúc rồi Ctrl+C, node in sai số vị trí, sai số góc và %
 | `/cmd_vel` | `geometry_msgs/Twist` | ROS → `motor_model` (và Teleop Gazebo → ROS) |
 | `/cmd_vel_limited` | `geometry_msgs/Twist` | `motor_model` → Gazebo DiffDrive |
 | `/ground_truth` | `nav_msgs/Odometry` | Gazebo → ROS, frame `world`, chỉ để đánh giá |
-| `/odom`, `/tf` (odom → base_footprint) | `nav_msgs/Odometry`, `tf2_msgs/TFMessage` | Gazebo → ROS |
+| `/sim/wheel_odom` | `nav_msgs/Odometry` | Gazebo → `wheel_odom`, covariance = 0 |
+| `/wheel/odom` | `nav_msgs/Odometry` | `wheel_odom` → EKF (xe thật: node cầu nối STM32) |
+| `/odom`, `/tf` (odom → base_footprint) | `nav_msgs/Odometry`, `tf2_msgs/TFMessage` | EKF → SLAM, Nav2 |
 | `/scan` (7 Hz, 720 tia, 0.12–10 m) | `sensor_msgs/LaserScan` | Gazebo → ROS |
 | `/imu` (100 Hz) | `sensor_msgs/Imu` | Gazebo → ROS |
 | `/joint_states`, `/clock` | | Gazebo → ROS |
