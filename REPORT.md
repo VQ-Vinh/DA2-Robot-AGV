@@ -62,6 +62,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 08/10/2026 | Web dashboard giao nhiệm vụ qua trình duyệt | #11 |
 | 08/10/2026 | Giảm tải mô phỏng: bước vật lý 1 ms → 3 ms | #12 |
 | 08/10/2026 | Kho kiểu Kiva, giai đoạn 1: chui gầm, nâng, chở kệ | #13 |
+| 08/10/2026 | Kho Kiva, giai đoạn 2: nhận diện kệ bằng chân kệ | #14 |
 
 ---
 
@@ -386,6 +387,37 @@ Các sự cố gặp phải, theo thứ tự:
   - Khi một thư viện báo "va chạm", đọc mã nguồn để biết nó coi cái gì là va chạm, đừng đoán.
   - Kích thước cơ khí phải chừa đủ cho sai số thật của định vị và điều khiển; thử bằng nhiều lần chạy, không tin một lần thành công.
 
+### 4.10. Kho Kiva, giai đoạn 2: nhận diện kệ bằng chân kệ (PR #14)
+- **Mục tiêu:** ở giai đoạn 1 xe chui gầm theo vị trí ô trên bản đồ (qua AMCL). Kệ trả về mỗi lần lệch 1–9 cm, lâu dần sẽ lệch nhiều; AMCL cũng lệch ~5 cm. Kiva thật dùng camera đọc mã dưới kệ; ở đây dùng **lidar nhìn 4 chân kệ**, không thêm phần cứng.
+- **Cách làm:**
+  - Node `shelf_detector.py`: trong `/scan_raw` (chưa lọc), gom điểm liên tiếp thành cụm, giữ cụm nhỏ (< 8 cm, chân kệ 3 cm), lùi tâm cụm thêm nửa bề rộng chân theo tia (lidar chỉ thấy mặt trước); tìm 4 cụm tạo hình vuông cạnh 0.72 m (2 điểm đối diện qua đường chéo → tính 2 đỉnh còn lại → tìm cụm gần); chọn kệ gần xe nhất phía trước. Hướng = trung bình 4 cạnh (nhân 4 để các cạnh lệch 90° trùng nhau).
+  - Phát `/detected_dock_pose` với stamp **của scan**: `docking_server` so stamp này với giờ mô phỏng để tính timeout.
+  - Đọc mã nguồn `SimpleNonChargingDock` của Jazzy trước khi cấu hình: mặc định `external_detection_translation_x = -0.2` và roll/pitch ±1.57 là cho camera đọc AprilTag, phải đặt về 0.
+  - 2 loại dock: `shelf_dock` (lấy kệ, theo nhận diện) và `slot_dock` (trả kệ vào ô trống, không có chân để nhìn, theo bản đồ).
+  - Bài thử thêm tham số `shelf_offset` (dời kệ bằng dịch vụ `set_pose` của Gazebo) và `detect` (chọn cách chui), đo sai số so với **kệ thật** chứ không so với ô.
+- **Kết quả** (kệ dời lệch (+8, −6 cm, 4°), (−7, +5 cm, −5°), (+10, 0 cm, 0°), mỗi kiểu thử `ke_03` và `ke_06`, vùng chết 100 RPM):
+
+  | | Chui theo chân kệ (`shelf_dock`) | Chui theo ô trên bản đồ (`slot_dock`) |
+  |---|---|---|
+  | Chui gầm lấy kệ thành công | **6/6** | 2/6 |
+  | Chu trình trọn vẹn (10 bước) | **6/6** | 2/6 |
+  | Lệch ngang so với kệ thật | **0.0–0.9 cm** | 1.6–10.9 cm |
+  | Lệch góc so với kệ thật | 0.4–1.9° | 1.6–34.6° |
+  | Lệch dọc so với tâm kệ (xe dừng quá) | 3.8–6.1 cm | 3.1–3.9 cm (2 lần chui được) |
+
+  Theo bản đồ: 4/6 lần hỏng ở bước chui gầm, log `docking_server` báo "Collision detected" (xe vào đúng ô nhưng lệch kệ thật 9–11 cm, quỹ đạo quẹt chân kệ). Theo chân kệ: lệch ngang ≤ 0.9 cm dù kệ lệch ô tới 10.9 cm.
+- **Sai lầm / sự cố:**
+
+  | # | Sự cố | Nguyên nhân | Cách sửa |
+  |---|---|---|---|
+  | 1 | Loạt so sánh đầu mất hết kết quả (5/12 lần) | Log để ở `/tmp` của WSL; WSL tự khởi động lại (uptime về 0) và xoá `/tmp` | Log vào `~/agv_tests` (ext4), loạt thử chạy tách khỏi app (`nohup setsid`) |
+  | 2 | Lần thử cmp10 hỏng khi khởi động | Trong lúc loạt thử chạy, đã sửa `mission.launch.py` để làm giai đoạn 3; workspace dùng `--symlink-install` nên launch đọc ngay file đang sửa, mà node mới chưa build | Cất phần giai đoạn 3 (`git stash`), chạy lại 3 lần cuối. Bài học: không sửa workspace đang được loạt thử dùng |
+- **Còn lại:**
+  - Xe dừng quá tâm kệ 4–6 cm theo chiều dọc ở mọi lần (đi ≥ 0.34 m/s do vùng chết, phanh muộn) → kệ nằm lệch tâm mặt nâng chừng đó. Có thể bù bằng `external_detection_translation_x`, hoặc hạ vùng chết (mục 4.9), chưa làm.
+  - Trả kệ vẫn theo bản đồ (ô trống không có gì để nhận diện).
+  - Bộ nhận diện thỉnh thoảng thấy "hình vuông" giả ở xa (ghép chân của các kệ / góc kệ cố định) nhưng luôn chọn kệ gần nhất phía trước nên chưa gây lỗi trong 12 lần thử.
+- **Bài học:** đo sai số so với đúng đối tượng cần chạm tới (kệ thật), không so với vị trí "lẽ ra" của nó (ô trên bản đồ).
+
 ---
 
 ## 5. Tổng hợp sai lầm và bài học
@@ -410,6 +442,8 @@ Các sự cố gặp phải, theo thứ tự:
 | Kiva | Đoán ý nghĩa ngưỡng va chạm của docking, đặt vùng cấm ở local costmap | Đọc mã nguồn thư viện trước khi chỉnh tham số |
 | Kiva | Kệ 0.55 m chừa khe 5.5 cm cho xe | Kích thước cơ khí phải tính theo sai số định vị / điều khiển đã đo |
 | Kiva | Xoá costmap sai thời điểm (lúc bắt đầu nâng) | Nghĩ tới dữ liệu cũ còn trong bộ đệm khi đổi chế độ lọc |
+| Kiểm thử | Để log loạt thử dài ở `/tmp` của WSL | Log vào thư mục bền, chạy tách khỏi phiên làm việc |
+| Kiểm thử | Sửa workspace trong lúc loạt thử đang dùng nó | Làm việc khác trên nhánh / thư mục khác, hoặc chờ loạt thử xong |
 
 ## 6. Vấn đề còn mở
 Đã giải quyết (xem 4.6): AMCL lệch ở khu phía đông; "collision ahead" trong lối hẹp (từ 24 lần một chặng xuống 0–4 lần một nhiệm vụ).
@@ -421,7 +455,7 @@ Các sự cố gặp phải, theo thứ tự:
 5. **Node Python trong mô phỏng tốn CPU vì `/clock`:** đã giảm từ 38–75 % xuống 30–48 % mỗi node nhờ bước 3 ms (mục 4.8); vẫn còn vì `/clock` 333 tin/s. Chỉ có trong mô phỏng.
 6. **Dashboard chưa có đăng nhập:** chỉ mở trong LAN / Tailscale.
 7. **Nav2 thỉnh thoảng không khởi động xong:** container nạp node nhưng phản hồi dịch vụ `load_node` cho launch bị timeout, launch chờ mãi (1/10 lần chạy ngày 08/10). Chưa tìm nguyên nhân; khi gặp thì chạy lại.
-8. **Kiva:** chui gầm dựa vào vị trí AMCL (kệ lệch trên mặt nâng tới ~7 cm); giai đoạn 2 sẽ nhận diện chân kệ bằng lidar. Chưa có đơn hàng, pin, xử lý sự cố (giai đoạn 3–5). Dashboard chưa vẽ vị trí kệ đang được chở.
+8. **Kiva:** lấy kệ đã chui theo chân kệ (lệch ngang ≤ 0.9 cm, mục 4.10) nhưng xe dừng quá tâm kệ 4–6 cm; trả kệ vẫn theo bản đồ. Chưa có đơn hàng, pin, xử lý sự cố (giai đoạn 3–5). Dashboard chưa vẽ vị trí kệ đang được chở.
 
 ## 7. Cách ghi tiếp tài liệu này
 Mỗi khi xong một phần việc hoặc sửa xong một sự cố, thêm vào mục tương ứng theo quy ước ở đầu file: mục tiêu, cách làm, sai lầm, nguyên nhân, cách sửa, kết quả có số liệu, bài học. Quy tắc này nằm trong skill `.claude/skills/report-log`.
