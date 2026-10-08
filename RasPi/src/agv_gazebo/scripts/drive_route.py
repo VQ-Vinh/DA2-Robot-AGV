@@ -23,20 +23,17 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 
-# Lo trinh (x, y) trong frame world cua warehouse.sdf, xuat phat mac dinh (-4.5, 0).
-# Ke: x -2.7..0.3 va 1.3..4.3, hang y = +-0.8, +-2.4 (rong 0.6 m).
-# Loi doc: y = 0, +-1.6, +-3.4. Loi ngang: x = 0.8 (giua 2 day ke), x = 5.2 (phia dong).
+# Lo trinh (x, y) trong frame world cua warehouse.sdf (kho kieu Kiva, sinh boi make_warehouse.py),
+# xuat phat mac dinh (-4.5, 0). Chi di trong loi, khong chui gam cac ke mini dang dau:
+#   o ke: x -1.5..2.9, hang y = +-1.6 (ke 0.75 m) -> loi giua y = 0, hanh lang bac / nam y = +-2.5
+#   (giua day o va ke co dinh sat tuong y = +-3.15), cot doc phia dong x = 4.0 (truoc 2 pallet).
 ROUTE = [
-    (-4.5, -3.4),   # xuong goc tay nam
-    (0.8, -3.4),    # loi duoi cung, sang giua kho
-    (0.8, -1.6),
-    (5.2, -1.6),    # loi giua hang C-D, sang phia dong (giua 2 pallet)
-    (5.2, 1.6),
-    (0.8, 1.6),     # loi giua hang A-B
-    (0.8, 3.4),
-    (-4.5, 3.4),    # loi tren cung, ve phia tay
+    (-4.5, -2.5),   # xuong hanh lang nam
+    (4.0, -2.5),    # sang phia dong
+    (4.0, 2.5),     # len cot dong (giua day o va 2 pallet)
+    (-4.5, 2.5),    # hanh lang bac, ve phia tay
     (-4.5, 0.0),
-    (5.2, 0.0),     # loi chinh y = 0, xuyen ca kho
+    (4.0, 0.0),     # loi giua, xuyen ca khu luu ke
     (-4.5, 0.0),    # quay ve cho xuat phat -> SLAM khep vong (loop closure)
 ]
 
