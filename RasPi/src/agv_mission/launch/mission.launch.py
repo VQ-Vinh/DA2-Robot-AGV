@@ -4,10 +4,13 @@
   ros2 launch agv_mission mission.launch.py mission:=giao_hang       # chay ngay mot nhiem vu
   ros2 launch agv_gazebo sim.launch.py nav:=true mission:=giao_hang  # mo phong (tu goi file nay)
 
+Web dashboard bat mac dinh: http://<may chay>:8080  (dashboard:=false de tat, port:=... de doi cong).
+
 Vi tri: config/stations.yaml, nhiem vu: config/missions.yaml.
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -31,4 +34,17 @@ def generate_launch_description():
                 'repeat': ParameterValue(LaunchConfiguration('repeat'), value_type=int),
             }],
             output='screen'),
+        DeclareLaunchArgument('dashboard', default_value='true', description='Chay web dashboard'),
+        DeclareLaunchArgument('port', default_value='8080', description='Cong web dashboard'),
+        Node(
+            package='agv_mission', executable='web_dashboard.py',
+            # Khong dung use_sim_time: chi lay TF moi nhat, khong can dong ho. Bat len thi node phai
+            # nhan /clock ~1000 tin/s cua Gazebo, ton ~50 % mot nhan CPU chi de doc dong ho.
+            parameters=[{
+                'stations_file': PathJoinSubstitution([pkg, 'config', 'stations.yaml']),
+                'missions_file': PathJoinSubstitution([pkg, 'config', 'missions.yaml']),
+                'port': ParameterValue(LaunchConfiguration('port'), value_type=int),
+            }],
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('dashboard'))),
     ])
