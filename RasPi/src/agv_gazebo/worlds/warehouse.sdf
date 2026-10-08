@@ -7,8 +7,12 @@
 -->
 <sdf version="1.9">
   <world name="warehouse">
-    <physics name="1ms" type="ignored">
-      <max_step_size>0.001</max_step_size>
+    <!-- Buoc 3 ms nhu cac world mau cua Nav2 (nav2_minimal_tb3_sim tb3_sandbox, tb4_sim depot /
+         warehouse). Buoc 1 ms -> Gazebo phat /clock ~1000 tin/s, moi node rclpy dung use_sim_time
+         ton ~50 % mot nhan chi de doc dong ho (xem REPORT.md). Lidar 7 Hz, IMU 100 Hz, odom 30 Hz
+         van nho hon nhieu tan so vat ly 333 Hz. -->
+    <physics name="3ms" type="ignored">
+      <max_step_size>0.003</max_step_size>
       <real_time_factor>1.0</real_time_factor>
     </physics>
 
