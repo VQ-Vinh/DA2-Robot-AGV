@@ -200,6 +200,7 @@ ros2 launch agv_navigation navigation.launch.py      # xe thật (cần /scan, /
 
 Làm theo [linorobot2](https://github.com/linorobot/linorobot2):
 - `agv_navigation/config/nav2.yaml` là **file mặc định của Nav2 Jazzy**, chỉ thay khối bộ điều khiển bằng khối của linorobot2. Khối đó dùng **RotationShim** (quay tại chỗ về hướng đường đi) kết hợp **Regulated Pure Pursuit** (bám đường, ~0.4 m/s). Kiểu chạy này hợp với xe có vùng chết.
+- Chỉnh theo vùng chết động cơ (REPORT.md 4.14): RPP không xin chậm hơn 0.35 m/s (`min_approach_linear_velocity`, `regulated_linear_scaling_min_speed`) và quay tại chỗ 1.5 rad/s; `velocity_smoother` gần như bỏ giới hạn gia tốc (động cơ tự giới hạn); docking nới `undock_linear/angular_tolerance` 0.10 m / 0.3 rad; `behavior_server` 20 Hz. Thiếu các chỉnh này thì xe quay tròn tại staging khi docking thử lại, vọt lố 30–80° sau mỗi lần quay tại chỗ, đi vòng quanh đích.
 - Đổi thêm: bán kính xe 0.25 m, lidar 10 m, AMCL đặt sẵn vị trí ban đầu ở gốc bản đồ, AMCL `alpha1–4: 0.05` và `z_hit/z_rand: 0.95/0.05` (xem mục dưới).
 - `navigation.launch.py` gọi thẳng `bringup_launch.py` của Nav2 (map_server + AMCL + navigation).
 
@@ -249,6 +250,8 @@ python3 agv_navigation/scripts/make_keepout_mask.py
 - `shelf_dock` (**lấy kệ**): chui theo **kệ thật**. Node `shelf_detector.py` (agv_navigation, dùng chung xe thật) tìm 4 chân kệ trong `/scan_raw` (4 cụm điểm nhỏ tạo hình vuông cạnh 0.72 m), phát tâm kệ lên `/detected_dock_pose`. Kệ trả về mỗi lần lệch vài cm, lâu dần sẽ lệch nhiều; AMCL cũng lệch ~5 cm, nên không tin vị trí ô trên bản đồ.
 - `slot_dock` (**trả kệ** vào ô trống, không có chân nào để nhận diện): theo vị trí ô trên bản đồ. Gửi `DockRobot` với `use_dock_id: false`, `dock_pose` = tâm ô, `dock_type: slot_dock`.
 - Tới staging qua một điểm cách thêm 1.2 m trên cùng trục ô (`NavigateThroughPoses`), để đoạn cuối là đường thẳng: quay tại chỗ với vùng chết thì vọt lố 30–50°.
+- **Kiểm tra tư thế trước khi nâng / hạ** (`checked_dock` trong `order_manager`): docking chỉ kiểm khoảng cách tới tâm ô, không kiểm hướng, nên có lúc báo xong khi xe lệch 22–50°. Lệch hướng > `dock_yaw_tol_deg` (8) hoặc, khi trả kệ, lệch vị trí > `dock_pos_tol` (0.10 m) thì lùi thẳng ra staging vào lại (`dock_attempts` 3). Lệch > `turn_min_deg` (40) thì quay tại chỗ bớt trước (Spin quay thừa ~`spin_coast_deg` 30°, nên lệch nhỏ không chỉnh tại chỗ được).
+- **Mô phỏng khoá kệ vào mặt nâng** khi nâng hết (plugin `DetachableJoint` trong mỗi kệ, `lift_sim` gửi `/shelf/<kệ>/attach|detach` qua `gz topic`), hạ thì mở khoá trước. Xe thật cần **chốt định vị** trên mặt nâng tương ứng. `lift_sim ... -p lock_shelves:=false` để chở chỉ bằng ma sát như trước.
 - Vùng cấm (ô kệ) **chỉ ở global costmap**: để ở local costmap thì bộ điều khiển docking coi mép vùng cấm là vật cản.
 - `docking_server` của Jazzy phát thẳng `cmd_vel` (không qua collision monitor), nên **giữ** kiểm tra va chạm của nó.
 
@@ -258,7 +261,10 @@ ros2 launch agv_gazebo sim.launch.py nav:=true
 ros2 run agv_gazebo shelf_transport_test.py --ros-args -p shelf:=ke_03 -p station:=tram_lay_hang
 # kệ đặt lệch khỏi tâm ô (dx m, dy m, dyaw độ); detect:=false để so với cách chui theo bản đồ
 ros2 run agv_gazebo shelf_transport_test.py --ros-args -p shelf:=ke_03 -p shelf_offset:="[0.08, -0.06, 4.0]" -p detect:=false
+# 8 đơn liên tiếp, đo quỹ đạo thật từng bước (góc quay thừa, tư thế khi trả kệ); CSV ở ~/agv_tests/motion_<tag>.csv
+ros2 run agv_gazebo motion_test.py m1
 ```
+Kết quả `motion_test.py` có vùng chết (REPORT.md 4.14): trước khi sửa 8/8 đơn xong, TB 105 s, nhưng có bước chui gầm / trả kệ quay thừa ~4200°; sau khi sửa 8/8, TB 88 s, quay thừa khi trả kệ TB 28° (max 75°), không lần nào Nav2 phải hồi phục.
 
 So sánh khi kệ bị dời lệch như sau nhiều lần trả kệ: (+8, −6 cm, 4°), (−7, +5 cm, −5°), (+10, 0 cm, 0°), mỗi kiểu thử `ke_03` và `ke_06` (vùng chết 100 RPM):
 
