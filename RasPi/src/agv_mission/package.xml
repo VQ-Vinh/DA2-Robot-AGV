@@ -3,7 +3,7 @@
 <package format="3">
   <name>agv_mission</name>
   <version>0.1.0</version>
-  <description>Dieu phoi nhiem vu kho cho AGV: vi tri co ten, nhiem vu dinh san, lenh tu terminal; dung chung cho mo phong va xe that</description>
+  <description>Dieu phoi nhiem vu kho cho AGV: vi tri co ten, nhiem vu dinh san, lenh tu terminal va web dashboard; dung chung cho mo phong va xe that</description>
   <maintainer email="technical@samaser.com.vn">VO QUANG VINH</maintainer>
   <license>TODO: License declaration</license>
 
@@ -17,6 +17,9 @@
   <exec_depend>lifecycle_msgs</exec_depend>
   <exec_depend>nav2_msgs</exec_depend>
   <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
