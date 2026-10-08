@@ -2,9 +2,12 @@
 <!--
   AGV kho hang: xe skid-steer 4 banh (GA25-370 x4), lidar YDLidar, IMU BNO055.
   Than xe 2 tang: 2 tam mica 30 x 30 cm cach nhau 10 cm, 4 tru oc o 4 goc.
-    - Tang 1: pin, mach, Pi, STM32 (khoi "linh kien")
-    - Tang 2: lidar
-  Frame: base_footprint (mat dat) -> base_link (tam truc banh) -> banh, laser_frame, imu_link.
+    - Tang 1: pin, mach, Pi, STM32 (khoi "linh kien"); lidar dat tren khoi linh kien, GIUA 2 tang
+    - Tang 2: co cau nang (vit me) + mat nang de chui gam va nang ke mini (kieu Amazon Kiva)
+  Lidar o giua 2 tang (mat quet ~0.12 m) vi: tren noc thi bi day ke che khi chui gam; o day
+  thi thay ca pallet thap 0.15 m. 4 tru oc che vai do -> payload_manager loc bo.
+  Frame: base_footprint (mat dat) -> base_link (tam truc banh) -> banh, laser_frame, imu_link,
+         lift_plate (khop truot lift_joint, 0 = ha, lift_stroke = nang).
   Gia tri co danh dau (*) la uoc luong - do xe that roi sua.
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="agv">
@@ -35,10 +38,17 @@
        effective_track moi = effective_track cu * goc_odom / goc_that. -->
   <xacro:property name="effective_track"  value="0.45"/>   <!-- hieu chinh trong sim: quay that 124 deg / odom 163 deg -->
 
-  <!-- Lidar tren tang 2 -->
+  <!-- Lidar giua 2 tang, dat tren khoi linh kien -->
   <xacro:property name="lidar_x"          value="0.0"/>    <!-- (*) giua mica -->
   <xacro:property name="lidar_radius"     value="0.035"/>  <!-- YDLidar X4 ~ 70 mm -->
   <xacro:property name="lidar_height"     value="0.035"/>  <!-- (*) chan de -> tam quet -->
+
+  <!-- Mat nang tren tang 2 (vit me + dong co nho, tu giu tai khi mat dien) -->
+  <xacro:property name="lift_plate_size"  value="0.26"/>
+  <xacro:property name="lift_plate_thickness" value="0.01"/>
+  <xacro:property name="lift_gap"         value="0.002"/>  <!-- mat nang ha het cach tang 2 -->
+  <xacro:property name="lift_stroke"      value="0.03"/>   <!-- ke mini cao gam 0.18 m: nang len ~1.7 cm khoi san -->
+  <xacro:property name="lift_speed"       value="0.02"/>   <!-- m/s, ~1.5 s cho het hanh trinh -->
 
   <!-- Toa do z theo base_link (truc banh) -->
   <xacro:property name="plate1_z"   value="${plate1_below_axle + plate_thickness / 2}"/>
@@ -170,7 +180,7 @@
   <xacro:wheel prefix="rl" x="${-wheelbase/2}" y="${ track_width/2}"/>
   <xacro:wheel prefix="rr" x="${-wheelbase/2}" y="${-track_width/2}"/>
 
-  <!-- ===================== Lidar (tang 2) ===================== -->
+  <!-- ===================== Lidar (giua 2 tang) ===================== -->
   <link name="laser_frame">
     <visual>
       <geometry><cylinder radius="${lidar_radius}" length="${lidar_height}"/></geometry>
@@ -187,7 +197,31 @@
   <joint name="laser_joint" type="fixed">
     <parent link="base_link"/>
     <child link="laser_frame"/>
-    <origin xyz="${lidar_x} 0 ${plate2_top + lidar_height / 2}" rpy="0 0 0"/>
+    <origin xyz="${lidar_x} 0 ${plate1_top + payload_size_z + lidar_height / 2}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ===================== Mat nang (tang 2) ===================== -->
+  <link name="lift_plate">
+    <visual>
+      <geometry><box size="${lift_plate_size} ${lift_plate_size} ${lift_plate_thickness}"/></geometry>
+      <material name="grey"/>
+    </visual>
+    <!-- Ten cho cam bien tiep xuc "co ke": URDF -> SDF them duoi "_collision" thanh
+         "lift_plate_collision" (ten dung trong agv_gazebo.xacro) -->
+    <collision name="lift_plate">
+      <geometry><box size="${lift_plate_size} ${lift_plate_size} ${lift_plate_thickness}"/></geometry>
+    </collision>
+    <xacro:box_inertia m="0.15" x="${lift_plate_size}" y="${lift_plate_size}" z="${lift_plate_thickness}">
+      <origin xyz="0 0 0"/>
+    </xacro:box_inertia>
+  </link>
+
+  <joint name="lift_joint" type="prismatic">
+    <parent link="base_link"/>
+    <child link="lift_plate"/>
+    <origin xyz="0 0 ${plate2_top + lift_gap + lift_plate_thickness / 2}" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0.0" upper="${lift_stroke}" effort="300" velocity="${lift_speed}"/>
   </joint>
 
   <!-- ===================== IMU (BNO055, tang 1) ===================== -->
