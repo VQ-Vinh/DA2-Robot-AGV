@@ -146,6 +146,9 @@ else:
 send('add ke_02 tram_lay_hang 0')
 if wait_step('ke_02', 'to_station'):
     spin(4.0)
+    # Ke dang khoa vao mat nang (lift_sim, giong chot dinh vi): mo khoa truoc = chot gay / ke bi nhac ra
+    subprocess.run(['gz', 'topic', '-t', '/shelf/ke_02/detach', '-m', 'gz.msgs.Empty', '-p', ' '],
+                   capture_output=True, timeout=10)
     gz(['-s', '/world/warehouse/set_pose', '--reqtype', 'gz.msgs.Pose', '--reptype', 'gz.msgs.Boolean',
         '--req', 'name: "ke_02", position: {x: -5.5, y: 2.0, z: 0.0}'])
     t1 = time.time()
