@@ -84,6 +84,9 @@ def generate_launch_description():
     # Khong dung use_sim_time (giu nguyen stamp cua scan, khong can doc /clock).
     payload_manager = Node(package='agv_navigation', executable='payload_manager.py', output='screen')
 
+    # Nhan dien ke mini tu 4 chan (scan chua loc) -> /detected_dock_pose cho docking_server: dung chung xe that
+    shelf_detector = Node(package='agv_navigation', executable='shelf_detector.py', output='screen')
+
     # Odom banh xe cua Gazebo khong co covariance -> them vao, gui /wheel/odom nhu xe that
     wheel_odom = Node(
         package='agv_gazebo', executable='wheel_odom.py',
@@ -171,6 +174,7 @@ def generate_launch_description():
         motor_model,
         lift,
         payload_manager,
+        shelf_detector,
         wheel_odom,
         ekf,
         slam_launch,
