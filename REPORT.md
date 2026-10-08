@@ -61,6 +61,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 07–08/10/2026 | Sửa vấn đề còn mở: AMCL lệch ở khu phía đông, "collision ahead" trong lối hẹp | #10 |
 | 08/10/2026 | Web dashboard giao nhiệm vụ qua trình duyệt | #11 |
 | 08/10/2026 | Giảm tải mô phỏng: bước vật lý 1 ms → 3 ms | #12 |
+| 08/10/2026 | Kho kiểu Kiva, giai đoạn 1: chui gầm, nâng, chở kệ | #13 |
 
 ---
 
@@ -340,6 +341,51 @@ Các sự cố gặp phải, theo thứ tự:
   - Mặc định trong file mẫu (world 1 ms) cũng phải đối chiếu với dự án tham khảo như tham số thuật toán; một con số không ai chọn có thể quyết định cả hệ thống có quá tải hay không.
   - Kết quả lạ của công cụ đo (độ lệch không đổi, tiến trình "ăn" CPU) phải kiểm lại công cụ trước khi tin.
 
+### 4.9. Kho kiểu Kiva, giai đoạn 1: chui gầm, nâng và chở kệ (PR #13)
+- **Mục tiêu:** biến xe từ "đi tới điểm rồi đứng chờ" thành robot kho thật. Người làm đồ án chọn kiểu **Amazon Kiva**: xe chui gầm kệ mini, nâng kệ, chở cả kệ tới trạm lấy hàng (hàng tới người), tải 1–3 kg. Làm hết trong mô phỏng; khung Solid và PCB (chưa làm) sẽ theo kích thước của mô phỏng.
+- **Thiết kế:**
+  - **Lidar xuống giữa 2 tầng** (mặt quét 0.17 m → 0.12 m): trên nóc thì đáy kệ che lidar khi chui gầm. Hệ quả tốt: lidar thấy luôn pallet 15 cm, bỏ được vùng cấm vẽ tay ở mục 4.4.
+  - **Mặt nâng** trên tầng 2: khớp trượt 0–3 cm, 2 cm/s (mô phỏng vít me), cảm biến tiếp xúc "có kệ". Giao diện topic `/lift/command`, `/lift/state`, `/lift/has_load` giữ nguyên cho cầu nối STM32 sau này.
+  - **Kệ chở bằng vật lý thật** (kệ nằm trên mặt nâng nhờ ma sát), không dùng plugin `DetachableJoint`: plugin này gắn sẵn lúc khởi động (đọc world mẫu của Gazebo), mà kệ thì rải khắp kho.
+  - **Kho:** 10 ô kệ (2 dãy × 5), 8 kệ, kệ cố định sát tường làm mốc cho AMCL. Một file `shelves.yaml` sinh ra world, danh sách dock của Nav2 và vùng cấm, để 3 nơi luôn khớp nhau.
+  - **Chui gầm** bằng `docking_server` có sẵn của Nav2 Jazzy (loại `SimpleNonChargingDock`), mỗi ô là một dock.
+  - Node `payload_manager` (dùng chung với xe thật): lọc scan (trụ ốc của xe; chân kệ khi chở), đổi footprint costmap theo tải, giới hạn tốc độ khi chở.
+- **Bản đồ** lập lại 3 lần (mỗi lần đổi cỡ kệ): 100 % ô vật cản cách vật thật ≤ 10 cm, thấy 32/32 chân kệ. Lần cuối kém sắc hơn một chút (91.6 % ≤ 5 cm, trước đó 99.6–99.9 %), chưa rõ vì sao, vẫn dùng được.
+- **Sự cố và cách tìm ra:**
+
+  | # | Sự cố | Nguyên nhân (tìm bằng cách nào) | Cách sửa |
+  |---|---|---|---|
+  | 1 | Ra lệnh nâng, mặt nâng đứng yên ở 0 | Đẩy lệnh thẳng bằng `gz topic` vẫn không chạy → lỗi ở chế độ `use_velocity_commands` của `JointPositionController`; chế độ PID lực thì chạy | Dùng PID lực; `lift_sim` gửi quỹ đạo vị trí tăng dần 2 cm/s (vít me chạy đều bất kể tải), PID cứng + khâu I giữ được 3 kg |
+  | 2 | Có PID lực nhưng nâng rất chậm (0.019 m sau 4 s) | Mặt nâng chạm đáy kệ sau 1.3 cm, lực P chỉ nhỉnh hơn trọng lượng kệ 29 N | Như trên |
+  | 3 | `has_load` luôn False | Soi topic của Gazebo: cảm biến có báo chạm `deck_bottom` nhưng phát ở topic mặc định; với cảm biến contact, `<topic>` phải nằm **trong** `<contact>` | Chuyển thẻ `<topic>` |
+  | 4 | Tên collision cho cảm biến sai | URDF → SDF thêm đuôi `_collision` (đọc SDF sinh ra bằng `gz sdf -p`) | Đặt tên URDF `lift_plate` |
+  | 5 | Collision monitor sẽ bỏ hết điểm lidar | Đọc cấu hình: `min_height: 0.15` (mặc định Nav2), lidar mới ở 0.12 m | `min_height: 0.05` |
+  | 6 | Chui gầm luôn báo "Collision detected" | Đọc mã nguồn `controller.cpp` của Jazzy: chỉ bỏ qua va chạm gần **đích** (= tâm dock lùi thêm 0.25 m); thứ "đụng" là vùng cấm của ô trong local costmap | Vùng cấm chỉ ở global costmap (để planner không xuyên gầm kệ); local costmap chỉ có vật cản lidar thấy |
+  | 7 | Kệ 0.55 m: va chạm thật | Khe xe–chân kệ 5.5 cm; staging lệch ~8 cm ngang | Kệ 0.65 m rồi **0.75 m** (khe 15 cm; Kiva thật: kệ 0.9–1.2 m, xe 0.76 m), staging 1.0 m |
+  | 8 | Tới staging lệch góc 24–51° | Quay tại chỗ với vùng chết (≥ 1.5 rad/s) vọt lố ~0.5 rad sau khi goal checker báo tới (14°) | Đi tới staging qua điểm xa hơn 1.2 m cùng trục ô → đoạn cuối thẳng (0.7 m chưa đủ: vẫn lệch 37°) |
+  | 9 | Nâng kệ xong, lùi ra báo va chạm | Lúc còn hạ mặt nâng, 4 chân kệ đã vào costmap; sau khi nâng, điểm chân kệ bị lọc thành NaN, không tia nào xoá được → "chân kệ ma" trong footprint mới | `payload_manager` xoá costmap |
+  | 10 | Vẫn lỗi như 9, lúc có lúc không | Xoá ngay khi **bắt đầu** nâng thì costmap vẫn giữ scan cuối chưa lọc và đánh dấu lại ngay | Xoá khi mặt nâng đã lên hết (`up`) |
+  | 11 | Lùi ra khi chở: chân kệ lọt bộ lọc | Kệ nằm lệch trên mặt nâng ~7 cm (AMCL lệch lúc chui gầm), chân kệ ra tới 0.45 m, hộp lọc 0.41 m | Hộp lọc 0.48 m, footprint khi chở 0.84 m |
+  | 12 | Ghi nhầm "docking tắt kiểm tra va chạm được" | Đọc launch của Nav2: `docking_server` phát thẳng `cmd_vel`, **không** qua collision monitor | Giữ kiểm tra va chạm của docking |
+
+  Sai lầm của công cụ thử (cũng ghi lại vì đã làm mất thời gian): script chờ `amcl_pose` bằng QoS thường nên chờ mãi (AMCL phát kiểu giữ tin, chỉ khi xe chạy); khai báo tham số trong hàm gọi 2 lần nên crash; coi "có kết quả" là "thành công" nên một lần staging lệch 1.25 m vẫn báo OK; script không nạp profile Fast DDS nên node thử không thấy node khác; DiffDrive giữ lệnh cuối nên xe chạy mãi khi script quên gửi lệnh dừng.
+- **Kết quả** (chu trình 10 bước: tới staging → chui gầm → nâng → lùi ra → chở tới trạm lấy hàng → tới staging → trả kệ → hạ → lùi ra → về trạm sạc; đo bằng vị trí thật; 6 lần mỗi cấu hình trên 3 kệ ở 2 dãy):
+
+  | | Vùng chết 100 RPM (firmware hiện tại) | 50 RPM |
+  |---|---|---|
+  | Chu trình trọn vẹn | **6/6** | **6/6** |
+  | Lệch góc tại staging (TB / lớn nhất) | 17.8° / 42.6° | 5.2° / 13.0° |
+  | Lệch góc tại staging khi chở kệ | 33.3° / 66.3° | 8.5° / 13.6° |
+  | Sau khi chui gầm lấy kệ (ngang / góc, lớn nhất) | 5.5 cm / 3.3° | 4.1 cm / 0.7° |
+  | Kệ trả về lệch tâm ô | 3.1–8.7 cm | 0.6–5.6 cm |
+  | Thời gian một chu trình | 74–107 s | 98–119 s |
+
+  Trước các bản sửa cuối (kệ 0.75 m, xoá costmap khi `up`, hộp lọc 0.48 m), các lần chạy với kệ 0.55–0.65 m chỉ 1/3–2/3 chu trình xong.
+- **Yêu cầu rút ra cho phần cứng:** khung theo kệ 0.75 × 0.75 m, gầm 0.18 m, xe cao ≤ 0.167 m khi hạ mặt nâng, lidar giữa 2 tầng; hạ `SPD_RPM_MIN` của firmware (đo ở trên: 50 RPM cho góc staging tốt hơn ~4 lần).
+- **Bài học:**
+  - Khi một thư viện báo "va chạm", đọc mã nguồn để biết nó coi cái gì là va chạm, đừng đoán.
+  - Kích thước cơ khí phải chừa đủ cho sai số thật của định vị và điều khiển; thử bằng nhiều lần chạy, không tin một lần thành công.
+
 ---
 
 ## 5. Tổng hợp sai lầm và bài học
@@ -361,17 +407,21 @@ Các sự cố gặp phải, theo thứ tự:
 | Dashboard | Tưởng node mới tốn CPU do code của nó | Đo cả node cũ và node rỗng để tìm phần chung (`/clock` 1 kHz) |
 | Mô phỏng | Để nguyên bước vật lý 1 ms có sẵn trong world | Đối chiếu world mẫu (Nav2 dùng 3 ms); bước nhỏ không có nghĩa là tốt hơn nếu máy không theo kịp |
 | Kiểm thử | Đổ lỗi cho tiến trình nền và tin số đo lệch gốc toạ độ | Kiểm lại công cụ đo khi số liệu lạ |
+| Kiva | Đoán ý nghĩa ngưỡng va chạm của docking, đặt vùng cấm ở local costmap | Đọc mã nguồn thư viện trước khi chỉnh tham số |
+| Kiva | Kệ 0.55 m chừa khe 5.5 cm cho xe | Kích thước cơ khí phải tính theo sai số định vị / điều khiển đã đo |
+| Kiva | Xoá costmap sai thời điểm (lúc bắt đầu nâng) | Nghĩ tới dữ liệu cũ còn trong bộ đệm khi đổi chế độ lọc |
 
 ## 6. Vấn đề còn mở
 Đã giải quyết (xem 4.6): AMCL lệch ở khu phía đông; "collision ahead" trong lối hẹp (từ 24 lần một chặng xuống 0–4 lần một nhiệm vụ).
 
 1. **Hệ thống đôi khi khựng khoảng 1 s** khi máy tải nặng (vòng điều khiển tụt xuống 9.6 Hz, TF cũ). **Trong mô phỏng đã giảm hẳn** nhờ bước vật lý 3 ms (mục 4.8: "Control loop missed" 0–1 mỗi lần so với 11–152). Vẫn cần theo dõi khi chạy trên Pi 4 (yếu hơn PC).
-2. **Vùng chết của động cơ:** xe không đi chậm hơn 0.34 m/s và không quay chậm hơn 1.5 rad/s. Nên cải thiện điều khiển tốc độ thấp trên STM32 để hạ `SPD_RPM_MIN`.
+2. **Vùng chết của động cơ:** xe không đi chậm hơn 0.34 m/s và không quay chậm hơn 1.5 rad/s. Nên cải thiện điều khiển tốc độ thấp trên STM32 để hạ `SPD_RPM_MIN`. Đo ở mục 4.9: 50 RPM làm xe tới staging lệch góc ít hơn ~4 lần và đặt kệ chính xác hơn.
 3. **Phần cứng chưa làm:** mở rộng 4 bánh, node cầu nối UART Pi ↔ STM32 (phải có giữ bán kính cua + covariance cho odom), YDLidar, BNO055, INA226.
 4. **Kích thước xe** (track, wheelbase) vẫn là ước lượng, cần đo xe thật.
 5. **Node Python trong mô phỏng tốn CPU vì `/clock`:** đã giảm từ 38–75 % xuống 30–48 % mỗi node nhờ bước 3 ms (mục 4.8); vẫn còn vì `/clock` 333 tin/s. Chỉ có trong mô phỏng.
-7. **Nav2 thỉnh thoảng không khởi động xong:** container nạp node nhưng phản hồi dịch vụ `load_node` cho launch bị timeout, launch chờ mãi (1/10 lần chạy ngày 08/10). Chưa tìm nguyên nhân; khi gặp thì chạy lại.
 6. **Dashboard chưa có đăng nhập:** chỉ mở trong LAN / Tailscale.
+7. **Nav2 thỉnh thoảng không khởi động xong:** container nạp node nhưng phản hồi dịch vụ `load_node` cho launch bị timeout, launch chờ mãi (1/10 lần chạy ngày 08/10). Chưa tìm nguyên nhân; khi gặp thì chạy lại.
+8. **Kiva:** chui gầm dựa vào vị trí AMCL (kệ lệch trên mặt nâng tới ~7 cm); giai đoạn 2 sẽ nhận diện chân kệ bằng lidar. Chưa có đơn hàng, pin, xử lý sự cố (giai đoạn 3–5). Dashboard chưa vẽ vị trí kệ đang được chở.
 
 ## 7. Cách ghi tiếp tài liệu này
 Mỗi khi xong một phần việc hoặc sửa xong một sự cố, thêm vào mục tương ứng theo quy ước ở đầu file: mục tiêu, cách làm, sai lầm, nguyên nhân, cách sửa, kết quả có số liệu, bài học. Quy tắc này nằm trong skill `.claude/skills/report-log`.
