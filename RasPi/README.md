@@ -60,7 +60,7 @@ Build lại chỉ khi thêm file mới. Sửa file có sẵn (`.xacro`, `.sdf`, 
 ros2 launch agv_gazebo sim.launch.py nav:=true
 ```
 - RViz mở `agv_navigation/rviz/nav.rviz` (từ cấu hình mặc định của Nav2, gọn hơn): bản đồ trắng/đen, các ô kệ mini là vùng cấm, chấm đỏ = lidar, đường xanh = đường Nav2 lập, ô mờ quanh xe = local costmap. Global costmap (lớp tím/xanh phủ cả kho) tắt sẵn, muốn xem thì tick lại trong *Displays → Global Planner*.
-- Xe đã được đặt sẵn vị trí ban đầu. Nếu đặt xe chỗ khác (`x:= y:=`), bấm **2D Pose Estimate** rồi kéo chuột tại chỗ xe đứng.
+- Xe xuất phát **ngay ở trạm sạc** (đang sạc, mũi quay vào khối tiếp điểm, map (−0.45, 0), hướng π); AMCL đã đặt sẵn vị trí này. Khi chạy SLAM (`slam:=true`) xe tự xuất phát ở gốc bản đồ (world −4.5, 0). Nếu đặt xe chỗ khác (`x:= y:= yaw:=`, toạ độ world), bấm **2D Pose Estimate** rồi kéo chuột tại chỗ xe đứng.
 - Bấm **Nav2 Goal**, click vào điểm đích trên bản đồ rồi kéo chuột để chọn hướng. Xe tự lập đường (đường xanh) và đi tới.
 
 **Chạy nhiệm vụ kho** (bước 5). Tự chạy khi khởi động:
@@ -113,7 +113,7 @@ Lái xe (chọn một):
 | Cửa sổ **rqt_robot_steering** | Mô phỏng + xe thật | 2 thanh trượt. Lần đầu **bỏ tick ô "stamped"** (bridge nhận `Twist`), rqt sẽ nhớ |
 | `ros2 run teleop_twist_keyboard teleop_twist_keyboard` | Mô phỏng + xe thật | Bàn phím trong terminal |
 
-Tham số: `rviz:=false`, `steering:=false`, `headless:=true` (không mở cửa sổ nào), `x:= y:= yaw:=` (vị trí xuất phát), `rpm_min:=0` (tắt vùng chết động cơ, xem mục dưới).
+Tham số: `rviz:=false`, `steering:=false`, `headless:=true` (không mở cửa sổ nào), `x:= y:= yaw:=` (vị trí xuất phát, world; mặc định `auto` = trạm sạc, hoặc gốc bản đồ khi SLAM), `rpm_min:=0` (tắt vùng chết động cơ, xem mục dưới).
 
 Chỉ xem model, không cần Gazebo: `ros2 launch agv_description display.launch.py`
 

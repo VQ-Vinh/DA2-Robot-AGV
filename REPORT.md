@@ -495,6 +495,7 @@ Các sự cố gặp phải, theo thứ tự:
   | 8 | Xe kẹt sát khối trạm sạc 60 s ngay đơn đầu | Vào trạm sạc lỗi rồi nhận đơn đi luôn từ chỗ sát khối, quay tại chỗ quẹt vào khối (bộ phát hiện kẹt báo đúng) | Vào trạm lỗi thì lùi thẳng 0.5 m trước |
   | 9 | Báo "không tiến về đích 15 s" cả khi xe chạy bình thường | `distance_remaining` của `NavigateThroughPoses` không giảm đều (có lúc 0) | Tự tính khoảng cách thẳng từ `current_pose` (feedback) tới đích cuối |
   | 10 | Lùi ra sau khi **đã hạ kệ** lỗi thì đơn bị trả về hàng đợi, xe quay lại nâng chính kệ đó | Quy tắc "chỉ trả đơn khi chưa chở" sai: sau khi hạ, xe không chở nhưng vẫn đang ở gầm kệ | Từ bước nâng kệ trở đi mọi lỗi thành sự cố chờ người; lùi ra lỗi thì lùi thẳng 1 m bằng `BackUp` |
+  | 11 | Người dùng mở mô phỏng có GUI: xe **tự chạy lòng vòng quanh trạm sạc** ~100 s ngay khi mở | Log `docking_server`: "Timed out approaching dock", hết lượt thử. Xe xuất phát ở gốc bản đồ quay lưng về trạm sạc; `order_manager` lúc khởi động gọi về sạc, mỗi lần vào trạm lỗi lại lùi ra rồi đi vòng vào lại. Các bài thử headless không thấy vì chỉ nhìn kết quả đơn | Xe xuất phát ngay ở trạm sạc (launch `x/y/yaw:=auto`, AMCL `initial_pose` tại trạm); đang sạc sẵn thì bỏ bước đi tới staging. Log sau sửa: "Robot is already docked and/or charging, no need to dock" |
 - **Kết quả** (tất cả sự cố gây ra trong lúc xe đang chở kệ tới trạm). Hai lần chạy cuối:
 
   | Tình huống | Kết quả |
@@ -503,6 +504,7 @@ Các sự cố gặp phải, theo thứ tự:
   | Dừng khẩn | xe đi thêm **0.0 cm** trong 3 s sau khi dừng; "Đã xử lý" → làm tiếp bước đang dở, đơn **xong** |
   | Dịch kệ ra khỏi xe | phát hiện sau **1.7 s**, xe dừng, đơn lỗi, kệ "chưa rõ vị trí"; `shelf ke_02 N5` cập nhật đúng |
   | Chạy đơn bình thường sau khi thêm xử lý sự cố | lần o8: **3/3** đơn xong (70–119 s), đơn gấp trước, đơn huỷ không chạy, kệ về ô lệch 5.0–9.7 cm |
+  | Chạy đơn bình thường, xe xuất phát ở trạm sạc (sau sửa #11) | lần o9: **3/3** đơn xong (81–105 s), đơn huỷ không chạy, kệ về ô lệch 5.4–13.3 cm |
 - **Chưa làm:** mất định vị (AMCL lạc) chưa phát hiện tự động; mất liên lạc với STM32 (sẽ do cầu nối UART + watchdog của firmware lo); pin cạn giữa đơn.
 - **Bài học:** "Nav2 không báo lỗi" không có nghĩa là xe đang tiến tới đích — phải đo tiến độ; và mọi quyết định khi xe đang mang hàng phải tính tới trạng thái vật lý (đang đội kệ), không chỉ trạng thái phần mềm.
 
