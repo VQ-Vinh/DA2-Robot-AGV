@@ -12,6 +12,7 @@ Trinh duyet khong noi chuyen voi ROS/DDS: node nay dung giua, chi dung thu vien 
   GET  /api/events       (?after=<id nhat ky cuoi>&boot=<ma phien>) Server-Sent Events ~5 Hz: version cac lop ban do, vi tri xe, trang thai nhiem vu, duong di Nav2,
                          dong nhat ky moi, ket noi toi mission_server
   POST /api/command      {"cmd": "run tuan_tra"} -> /mission/command (chi nhan cac lenh trong ALLOWED)
+                         {"cmd": "order add ke_03 tram_lay_hang 1"} -> /order/command (lenh ORDER_ALLOWED)
 
 Chua co dang nhap: chi mo trong LAN / Tailscale.
 """
@@ -35,6 +36,7 @@ from std_msgs.msg import String
 from tf2_ros import Buffer, TransformException, TransformListener
 
 ALLOWED = {'goto', 'goto_xy', 'run', 'seq', 'cancel', 'status', 'list'}
+ORDER_ALLOWED = {'add', 'cancel', 'confirm', 'pause', 'resume', 'ack'}   # sau tien to "order"
 MAX_CMD_LEN = 1000
 MAX_PATH_POINTS = 200
 LOG_KEEP = 100
@@ -70,6 +72,7 @@ class Dashboard(Node):
         self.pose = None           # {x, y, yaw}
         self.path = []             # [[x, y], ...]
         self.state = None          # dict tu /mission/state
+        self.orders = None         # dict tu /order/state (order_manager)
         self.log = []              # [(id, thoi gian, dong)]
         self.log_id = 0
         self.boot = os.urandom(4).hex()   # doi moi lan node khoi dong: trinh duyet xoa nhat ky cu
@@ -80,6 +83,10 @@ class Dashboard(Node):
         self.cmd_pub = self.create_publisher(String, 'mission/command', 10)
         self.create_subscription(String, 'mission/status', self.on_status, latched)
         self.create_subscription(String, 'mission/state', self.on_state, latched)
+        self.order_pub = self.create_publisher(String, 'order/command', 10)
+        self.create_subscription(String, 'order/status', lambda m: self.on_status(m, '[don] '), latched)
+        self.create_subscription(String, 'order/state', self.on_orders, QoSProfile(
+            depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.create_subscription(OccupancyGrid, 'map', lambda m: self.on_grid('map', m), map_qos)
         # Vung cam khong nam trong /map (lidar quet qua phia tren pallet), Nav2 doc tu topic rieng
         self.create_subscription(OccupancyGrid, self.declare_parameter(
@@ -90,10 +97,10 @@ class Dashboard(Node):
         self.create_timer(EVENT_PERIOD, self.update_pose)
 
     # ---------- ROS ----------
-    def on_status(self, msg):
+    def on_status(self, msg, prefix=''):
         with self.lock:
             self.log_id += 1
-            self.log.append((self.log_id, time.strftime('%H:%M:%S'), msg.data))
+            self.log.append((self.log_id, time.strftime('%H:%M:%S'), prefix + msg.data))
             del self.log[:-LOG_KEEP]
 
     def on_state(self, msg):
@@ -103,6 +110,14 @@ class Dashboard(Node):
             return
         with self.lock:
             self.state = state
+
+    def on_orders(self, msg):
+        try:
+            orders = json.loads(msg.data)
+        except ValueError:
+            return
+        with self.lock:
+            self.orders = orders
 
     def on_grid(self, layer, msg):
         # -1 (chua biet) -> 255, 0..100 giu nguyen; 1 byte moi o
@@ -146,6 +161,8 @@ class Dashboard(Node):
                 'pose': self.pose,
                 'path': self.path,
                 'state': self.state,
+                'orders': self.orders,
+                'order_link': self.order_pub.get_subscription_count() > 0,
                 'grids': {k: (g['version'] if g else 0) for k, g in self.grids.items()},
                 'log': [{'id': i, 't': t, 'text': s} for i, t, s in self.log if i > after_log_id],
                 'link': self.cmd_pub.get_subscription_count() > 0,
@@ -153,6 +170,13 @@ class Dashboard(Node):
 
     def send_command(self, text):
         words = text.split()
+        if words and words[0].lower() == 'order':
+            if len(words) < 2 or words[1].lower() not in ORDER_ALLOWED:
+                return False, f'Lenh don hang khong duoc phep: {words[1] if len(words) > 1 else "(trong)"}'
+            if self.order_pub.get_subscription_count() == 0:
+                return False, 'Khong thay order_manager'
+            self.order_pub.publish(String(data=' '.join(words[1:])))
+            return True, 'Da gui'
         if not words or words[0].lower() not in ALLOWED:
             return False, f'Lenh khong duoc phep: {words[0] if words else "(trong)"}'
         if self.cmd_pub.get_subscription_count() == 0:
