@@ -5,10 +5,10 @@ ROS 2 **Jazzy** (Ubuntu 24.04) + **Gazebo Harmonic**. Chạy mô phỏng trên P
 | Package | Nội dung |
 |---|---|
 | `agv_description` | URDF/xacro xe skid-steer 4 bánh, lidar, IMU; cấu hình RViz |
-| `agv_gazebo` | World kho hàng, bridge Gazebo ↔ ROS 2, launch mô phỏng, node riêng cho mô phỏng |
+| `agv_gazebo` | World kho hàng kiểu Kiva (sinh từ `shelves.yaml`), bridge Gazebo ↔ ROS 2, launch mô phỏng, node riêng cho mô phỏng (động cơ, cơ cấu nâng, bài thử) |
 | `agv_localization` | EKF gộp odom bánh xe + IMU → `/odom`; dùng chung cho mô phỏng và xe thật |
-| `agv_navigation` | SLAM (slam_toolbox), bản đồ kho `maps/warehouse`, dẫn đường Nav2 + vùng cấm; dùng chung cho mô phỏng và xe thật |
-| `agv_mission` | Nhiệm vụ kho: vị trí có tên (kệ, trạm sạc, khu nhận hàng), nhiệm vụ định sẵn, gõ lệnh từ terminal hoặc web dashboard; dùng chung cho mô phỏng và xe thật |
+| `agv_navigation` | SLAM (slam_toolbox), bản đồ kho `maps/warehouse`, dẫn đường Nav2 + vùng cấm + chui gầm kệ (docking), `payload_manager` (lọc scan, footprint theo tải); dùng chung cho mô phỏng và xe thật |
+| `agv_mission` | Bố trí kho (`shelves.yaml`: ô kệ, kệ), vị trí có tên (trạm sạc, trạm lấy hàng...), nhiệm vụ định sẵn, gõ lệnh từ terminal hoặc web dashboard; dùng chung cho mô phỏng và xe thật |
 
 ## Tạo workspace (một lần)
 
@@ -59,36 +59,36 @@ Build lại chỉ khi thêm file mới. Sửa file có sẵn (`.xacro`, `.sdf`, 
 ```bash
 ros2 launch agv_gazebo sim.launch.py nav:=true
 ```
-- RViz mở `agv_navigation/rviz/nav.rviz` (từ cấu hình mặc định của Nav2, gọn hơn): bản đồ trắng/đen, 2 pallet là ô vùng cấm, chấm đỏ = lidar, đường xanh = đường Nav2 lập, ô mờ quanh xe = local costmap. Global costmap (lớp tím/xanh phủ cả kho) tắt sẵn, muốn xem thì tick lại trong *Displays → Global Planner*.
+- RViz mở `agv_navigation/rviz/nav.rviz` (từ cấu hình mặc định của Nav2, gọn hơn): bản đồ trắng/đen, các ô kệ mini là vùng cấm, chấm đỏ = lidar, đường xanh = đường Nav2 lập, ô mờ quanh xe = local costmap. Global costmap (lớp tím/xanh phủ cả kho) tắt sẵn, muốn xem thì tick lại trong *Displays → Global Planner*.
 - Xe đã được đặt sẵn vị trí ban đầu. Nếu đặt xe chỗ khác (`x:= y:=`), bấm **2D Pose Estimate** rồi kéo chuột tại chỗ xe đứng.
 - Bấm **Nav2 Goal**, click vào điểm đích trên bản đồ rồi kéo chuột để chọn hướng. Xe tự lập đường (đường xanh) và đi tới.
 
 **Chạy nhiệm vụ kho** (bước 5). Tự chạy khi khởi động:
 ```bash
-ros2 launch agv_gazebo sim.launch.py nav:=true mission:=giao_hang
+ros2 launch agv_gazebo sim.launch.py nav:=true mission:=tuan_tra
 ```
 Hoặc chạy `nav:=true` rồi gõ lệnh ở terminal thứ hai:
 ```bash
 ros2 run agv_mission agv_cmd.py list                      # vị trí và nhiệm vụ
-ros2 run agv_mission agv_cmd.py goto ke_C2                # đi tới một vị trí
-ros2 run agv_mission agv_cmd.py run giao_hang --follow    # chạy nhiệm vụ, in tiến độ tới khi xong
+ros2 run agv_mission agv_cmd.py goto tram_lay_hang        # đi tới một vị trí
+ros2 run agv_mission agv_cmd.py run tuan_tra --follow     # chạy nhiệm vụ, in tiến độ tới khi xong
 ros2 run agv_mission agv_cmd.py cancel                    # dừng
 ```
-Lệnh mới: `seq ke_A1:pick khu_nhan_hang:drop:2 tram_sac:charge` (chuỗi tự tạo, mỗi bước `vị_trí[:task[:giây chờ]]`), `goto_xy 1.5 1.0 0` (đi tới điểm bất kỳ, frame `map`).
+Lệnh mới: `seq khu_nhap_hang:pick tram_lay_hang:drop:2 tram_sac:charge` (chuỗi tự tạo, mỗi bước `vị_trí[:task[:giây chờ]]`), `goto_xy 1.5 1.0 0` (đi tới điểm bất kỳ, frame `map`).
 
-**Web dashboard** (chạy sẵn cùng `mission.launch.py` / `sim.launch.py nav:=true`): mở `http://localhost:8080` trên PC, hoặc `http://<IP Tailscale của máy chạy>:8080` từ điện thoại (trên xe thật: `http://sms-pi:8080`). Trên trang có bản đồ + vị trí xe + đường Nav2, nút **DỪNG**, chạy nhiệm vụ định sẵn, tạo chuỗi nhiệm vụ, vùng cấm (pallet thấp) tô đỏ, bấm một trạm trên bản đồ để đi tới, chế độ "Bấm để đi" tới điểm bất kỳ, và nhật ký. Tắt bằng `dashboard:=false`, đổi cổng bằng `port:=...`. **Chưa có đăng nhập**, chỉ mở trong LAN / Tailscale.
+**Web dashboard** (chạy sẵn cùng `mission.launch.py` / `sim.launch.py nav:=true`): mở `http://localhost:8080` trên PC, hoặc `http://<IP Tailscale của máy chạy>:8080` từ điện thoại (trên xe thật: `http://sms-pi:8080`). Trên trang có bản đồ + vị trí xe + đường Nav2, nút **DỪNG**, chạy nhiệm vụ định sẵn, tạo chuỗi nhiệm vụ, ô kệ (vùng cấm) tô đỏ, bấm một trạm trên bản đồ để đi tới, chế độ "Bấm để đi" tới điểm bất kỳ, và nhật ký. Tắt bằng `dashboard:=false`, đổi cổng bằng `port:=...`. **Chưa có đăng nhập**, chỉ mở trong LAN / Tailscale.
 
 | API | |
 |---|---|
 | `GET /api/config` | vị trí và nhiệm vụ (từ `stations.yaml`, `missions.yaml`) |
 | `GET /api/map` | bản đồ `/map` (ô base64, 255 = chưa biết) |
-| `GET /api/keepout` | mặt nạ vùng cấm `/keepout_filter_mask` (pallet thấp lidar không thấy), cùng dạng |
+| `GET /api/keepout` | mặt nạ vùng cấm `/keepout_filter_mask` (các ô kệ mini), cùng dạng |
 | `GET /api/events` | Server-Sent Events 5 Hz: `pose`, `path`, `state`, `log`, `link` |
-| `POST /api/command` | `{"cmd": "run giao_hang"}`: các lệnh `goto`, `goto_xy`, `run`, `seq`, `cancel`, `status`, `list` |
+| `POST /api/command` | `{"cmd": "run tuan_tra"}`: các lệnh `goto`, `goto_xy`, `run`, `seq`, `cancel`, `status`, `list` |
 
-Ví dụ ra lệnh từ phần mềm khác (WMS): `curl -X POST localhost:8080/api/command -d '{"cmd":"run giao_hang"}'`.
+Ví dụ ra lệnh từ phần mềm khác (WMS): `curl -X POST localhost:8080/api/command -d '{"cmd":"run tuan_tra"}'`.
 
-Trên RViz, các vị trí hiện thành đĩa màu có tên (xanh lá = trạm sạc, cam = khu nhận hàng, xanh dương = kệ). Trong Gazebo, trạm sạc và khu nhận hàng là các ô sơn trên sàn.
+Trên RViz, các vị trí hiện thành đĩa màu có tên (xanh lá = trạm sạc, cam = trạm lấy hàng, xanh dương = khu nhập hàng, xám = điểm trên lối). Trong Gazebo, các trạm và ô kệ là vạch sơn trên sàn.
 
 Sự cố thường gặp:
 
@@ -189,7 +189,7 @@ Kết quả (lộ trình `drive_route.py`, ~52 m qua mọi lối đi, chấm b�
 | Không vùng chết (`rpm_min:=0`), quay 0.5 rad/s | 98.4 % | 2.8 cm |
 | Có vùng chết (mặc định, quay ≥ 1.5 rad/s) | **99.4 %** | **2.7 cm** |
 
-Bản đồ trong repo (`maps/warehouse.pgm/.yaml`) lấy từ lần chạy có vùng chết. Gốc frame `map` là chỗ xe xuất phát (world x = −4.5, y = 0). Pallet 15 cm **không có** trên bản đồ vì lidar quét cao 17 cm, nên cần vùng cấm ở bước Nav2.
+Bảng trên là của kho cũ. Bản đồ trong repo (`maps/warehouse.pgm/.yaml`) là của **kho kiểu Kiva** (mục dưới), lập lại sau khi hạ lidar xuống 0.12 m: 100 % ô vật cản cách vật thật ≤ 10 cm (91.6 % ≤ 5 cm, trung vị 1.8 cm), thấy đủ 32/32 chân kệ mini. Gốc frame `map` là chỗ xe xuất phát (world x = −4.5, y = 0).
 
 ## Dẫn đường: Nav2
 
@@ -203,9 +203,9 @@ Làm theo [linorobot2](https://github.com/linorobot/linorobot2):
 - Đổi thêm: bán kính xe 0.25 m, lidar 10 m, AMCL đặt sẵn vị trí ban đầu ở gốc bản đồ, AMCL `alpha1–4: 0.05` và `z_hit/z_rand: 0.95/0.05` (xem mục dưới).
 - `navigation.launch.py` gọi thẳng `bringup_launch.py` của Nav2 (map_server + AMCL + navigation).
 
-**Vùng cấm cho pallet.** Lidar quét cao 17 cm không thấy pallet 15 cm. Lần chạy đầu, Nav2 lập đường sát pallet_2 và xe húc vào. Bánh quay trượt nên odom vẫn tăng, AMCL bị kéo lệch 3.8 m. Đã thêm **keepout filter** của Nav2, cấu hình lấy từ [nav2_costmap_filters_demo](https://github.com/ros-navigation/navigation2_tutorials):
+**Vùng cấm cho pallet (kho cũ).** Lidar quét cao 17 cm không thấy pallet 15 cm. Lần chạy đầu, Nav2 lập đường sát pallet_2 và xe húc vào. Bánh quay trượt nên odom vẫn tăng, AMCL bị kéo lệch 3.8 m. Đã thêm **keepout filter** của Nav2, cấu hình lấy từ [nav2_costmap_filters_demo](https://github.com/ros-navigation/navigation2_tutorials):
 - `maps/keepout_mask.pgm/.yaml`: mặt nạ cùng kích thước với bản đồ, pixel đen là vùng cấm.
-- Tạo lại khi đổi bản đồ hoặc chỗ pallet: `python3 scripts/make_keepout_mask.py` (sửa danh sách `ZONES` trong file).
+- Tạo lại khi đổi bản đồ: `python3 scripts/make_keepout_mask.py`. Kho Kiva: lidar đã thấy pallet, vùng cấm giờ là **các ô kệ mini** (đọc từ `shelves.yaml`) và **chỉ ở global costmap** (xem mục Kiva).
 
 Kết quả: 4 điểm đích qua các lối đi (lối dưới, phía đông giữa 2 pallet, lối hẹp giữa hàng A–B, về chỗ xuất phát), có vùng chết động cơ:
 
@@ -226,6 +226,48 @@ Dung sai đích của Nav2 là 0.25 m, tính theo vị trí AMCL. Lệch thật 
 - Nguyên nhân: `alpha1–4 = 0.2` giả định odom sai khoảng 45 %, trong khi odom EKF đo được chỉ sai 2–3 %. Mỗi lần xe quay tại chỗ (rất nhiều, do vùng chết), đám hạt phình ra. Thêm vào đó `z_hit/z_rand = 0.5/0.5` làm điểm của các hạt ít khác nhau.
 - Cách sửa: `alpha1–4: 0.05`, `z_hit: 0.95, z_rand: 0.05` (mặc định của AMCL ROS 1). Kết quả: sai số định vị lớn nhất còn 0.14–0.16 m, 12/12 điểm đích, không còn "collision ahead".
 
+## Kho kiểu Kiva: chui gầm, nâng kệ, chở tới trạm
+
+Xe chui vào gầm **kệ mini 4 chân**, nâng kệ lên ~1.7 cm, chở cả kệ tới trạm lấy hàng (mô hình "hàng tới người" của Amazon Kiva), rồi trả kệ về ô.
+
+**Bố trí** (`agv_mission/config/shelves.yaml`, nguồn duy nhất): 10 ô (2 dãy × 5, cách nhau 1.1 m) hai bên lối giữa rộng 2.45 m, 8 kệ, ô N5 và S5 để trống. Kệ 0.75 × 0.75 m, gầm cao 0.18 m, nặng 3 kg (kệ 1 kg + hàng 2 kg). Sửa file này rồi chạy:
+```bash
+python3 agv_gazebo/scripts/make_warehouse.py
+python3 agv_navigation/scripts/make_keepout_mask.py
+```
+(`make_warehouse.py` ghi world và danh sách dock trong `nav2.yaml`; đổi vị trí ô thì lập lại bản đồ trước khi tạo vùng cấm.)
+
+**Xe:** lidar đặt **giữa 2 tầng** (mặt quét 0.12 m): trên nóc thì bị đáy kệ che khi chui gầm; ở đây lidar thấy cả pallet 15 cm. Tầng 2 có **mặt nâng** (khớp `lift_joint`, hành trình 3 cm, 2 cm/s như vít me) và cảm biến "có kệ".
+
+| Node | Việc | Xe thật |
+|---|---|---|
+| `lift_sim.py` (agv_gazebo) | `/lift/command` (`up`/`down`) → khớp nâng; phát `/lift/state` (`down`/`moving_up`/`up`/`moving_down`/`error`), `/lift/has_load` | cầu nối STM32 phát đúng các topic này |
+| `payload_manager.py` (agv_navigation) | `/scan_raw` → `/scan`: bỏ điểm 4 trụ ốc của xe, khi chở thì bỏ cả 4 chân kệ; đổi footprint costmap (xe 0.32 × 0.38 m ↔ kệ 0.84 × 0.84 m); giới hạn 0.35 m/s khi chở; xoá costmap khi mặt nâng lên hết | dùng nguyên |
+
+**Chui gầm** dùng `docking_server` của Nav2 (`SimpleNonChargingDock`, loại `shelf_dock`, mỗi ô là một dock `slot_N1`…`slot_S5`). Xe tới **staging** cách tâm ô 1.0 m, rồi tiến thẳng vào.
+- Tới staging qua một điểm cách thêm 1.2 m trên cùng trục ô (`NavigateThroughPoses`), để đoạn cuối là đường thẳng: quay tại chỗ với vùng chết thì vọt lố 30–50°.
+- Vùng cấm (ô kệ) **chỉ ở global costmap**: để ở local costmap thì bộ điều khiển docking coi mép vùng cấm là vật cản.
+- `docking_server` của Jazzy phát thẳng `cmd_vel` (không qua collision monitor), nên **giữ** kiểm tra va chạm của nó.
+
+Thử cả chu trình (lấy kệ → trạm lấy hàng → trả về ô → trạm sạc), đo bằng vị trí thật:
+```bash
+ros2 launch agv_gazebo sim.launch.py nav:=true
+ros2 run agv_gazebo shelf_transport_test.py --ros-args -p shelf:=ke_03 -p station:=tram_lay_hang
+```
+
+Kết quả (6 lần mỗi cấu hình, 3 kệ ở 2 dãy: `ke_01`, `ke_03`, `ke_06`, mỗi lần 10 bước):
+
+| | Vùng chết 100 RPM (firmware hiện tại) | 50 RPM (nếu cải thiện tốc độ thấp) |
+|---|---|---|
+| Chu trình trọn vẹn | **6/6** | **6/6** |
+| Lệch góc tại staging (TB / lớn nhất) | 17.8° / 42.6° | 5.2° / 13.0° |
+| Lệch góc tại staging khi chở kệ | 33.3° / 66.3° | 8.5° / 13.6° |
+| Sau khi chui gầm lấy kệ (ngang / góc, lớn nhất) | 5.5 cm / 3.3° | 4.1 cm / 0.7° |
+| Kệ trả về lệch tâm ô | 3.1–8.7 cm | 0.6–5.6 cm |
+| Thời gian một chu trình | 74–107 s | 98–119 s |
+
+Bộ điều khiển docking nắn được cả góc lệch 66° ở staging nhờ khe 15 cm giữa xe và chân kệ. Hạ vùng chết xuống 50 RPM thì xe tới staging thẳng hơn 4 lần và đặt kệ chính xác hơn, đổi lại chạy chậm hơn ~20 s.
+
 ## Nhiệm vụ kho: `agv_mission`
 
 ```
@@ -235,8 +277,8 @@ agv_cmd.py ──/mission/command──► mission_server ──NavigateToPose�
                                      └─/mission/stations (MarkerArray cho RViz)
 ```
 
-- `config/stations.yaml`: vị trí có tên trong frame `map`, gồm `tram_sac` (chỗ xe xuất phát), `khu_nhan_hang` (vùng trống tây nam) và `ke_A1`…`ke_D2` (giữa lối đi phía nam mỗi kệ).
-- `config/missions.yaml`: nhiệm vụ định sẵn. `giao_hang`: kệ C2 → khu nhận hàng → trạm sạc. `giao_hang_2`: kệ A1, kệ D2 → khu nhận hàng → trạm sạc. `tuan_tra`: đi qua 8 kệ → trạm sạc. Mỗi bước có việc (`pick`/`drop`/`charge`/`pass`) và thời gian dừng.
+- `config/stations.yaml`: vị trí có tên trong frame `map`: `tram_sac` (chỗ xe xuất phát), `tram_lay_hang` (tây nam), `khu_nhap_hang` (tây bắc), `loi_tay`, `loi_dong` (hai đầu lối giữa). Ô kệ nằm ở `shelves.yaml`.
+- `config/missions.yaml`: lộ trình đơn giản (`tuan_tra`). Chở kệ theo đơn hàng sẽ do `order_manager` lo (giai đoạn sau); hiện thử bằng `shelf_transport_test.py`.
 - `mission_server.py` chờ `bt_navigator` "active" rồi mới gửi đích. Chặng thất bại thì xoá costmap, đợi 3 s và thử lại 1 lần; vẫn thất bại thì bỏ qua và đi tiếp. Hết nhiệm vụ thì in dòng `TONG KET` kèm thời gian từng chặng. Tham số launch: `mission:=<tên>`, `repeat:=<số lần>`.
 - Trên xe thật: chạy `navigation.launch.py` + `ros2 launch agv_mission mission.launch.py`. Toạ độ trong `stations.yaml` phải đo lại trên bản đồ của kho thật.
 
@@ -251,14 +293,17 @@ agv_cmd.py ──/mission/command──► mission_server ──NavigateToPose�
 | `/wheel/odom` | `nav_msgs/Odometry` | `wheel_odom` → EKF (xe thật: node cầu nối STM32) |
 | `/odom`, `/tf` (odom → base_footprint) | `nav_msgs/Odometry`, `tf2_msgs/TFMessage` | EKF → SLAM, Nav2 |
 | `/map`, `/tf` (map → odom) | `nav_msgs/OccupancyGrid` | slam_toolbox → RViz, Nav2 |
-| `/scan` (7 Hz, 720 tia, 0.12–10 m) | `sensor_msgs/LaserScan` | Gazebo → ROS |
+| `/scan_raw` (7 Hz, 720 tia, 0.12–10 m) | `sensor_msgs/LaserScan` | Gazebo → `payload_manager` (xe thật: driver YDLidar) |
+| `/scan` | `sensor_msgs/LaserScan` | `payload_manager` → SLAM, AMCL, Nav2 |
+| `/lift/command`, `/lift/state`, `/lift/has_load` | `std_msgs/String`, `String`, `Bool` | cơ cấu nâng (`lift_sim` / cầu nối STM32) |
+| `/lift/cmd_pos`, `/lift/contact` | `std_msgs/Float64`, `ros_gz_interfaces/Contacts` | `lift_sim` ↔ Gazebo |
 | `/imu` (100 Hz) | `sensor_msgs/Imu` | Gazebo → ROS |
 | `/joint_states`, `/clock` | | Gazebo → ROS |
 
 ## Kích thước xe
 
-Đặt ở đầu `agv_description/urdf/agv.urdf.xacro`: thân 2 tầng mica 30 × 30 cm cách nhau 10 cm, 4 trụ ốc ở góc, linh kiện ở tầng 1, lidar ở tầng 2 (mặt quét cao ~17 cm), bánh 65 mm. Giá trị đánh dấu `(*)` là ước lượng (track 0.34 m, wheelbase 0.20 m, độ dày mica...), cần đo xe thật rồi sửa.
+Đặt ở đầu `agv_description/urdf/agv.urdf.xacro`: thân 2 tầng mica 30 × 30 cm cách nhau 10 cm, 4 trụ ốc ở góc, linh kiện ở tầng 1, lidar đặt trên khối linh kiện **giữa 2 tầng** (mặt quét cao ~0.12 m), mặt nâng trên tầng 2, bánh 65 mm. Giá trị đánh dấu `(*)` là ước lượng (track 0.34 m, wheelbase 0.20 m, độ dày mica...), cần đo xe thật rồi sửa.
 
-Lidar quét ở ~17 cm nên **không thấy vật thấp hơn** (pallet 15 cm trong world là ví dụ) – cần camera/cảm biến gần sàn hoặc vùng cấm trên bản đồ.
+Lidar quét ở ~0.12 m: thấy pallet 15 cm và chân kệ mini, không thấy vật thấp hơn 12 cm. 4 trụ ốc giữa 2 tầng che lidar vài độ; `payload_manager` lọc bỏ.
 
 `effective_track` (0.45 m) là track hiệu dụng cho skid-steer: bánh trượt ngang khi quay nên xe quay ít hơn tính theo `track_width`. Hiệu chỉnh bằng cách cho xe quay tại chỗ rồi đặt `effective_track` mới = `effective_track` hiện tại × `góc_odom / góc_thật`.
