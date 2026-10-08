@@ -302,6 +302,14 @@ tới trước ô (thẳng trục ô) -> chui gầm (shelf_dock, theo chân kệ
 - **Dashboard** có thẻ *Đơn hàng*: tạo đơn (kệ, trạm, thường/gấp), hàng đợi (huỷ), nút **"Đã lấy hàng xong — trả kệ"** khi xe chờ ở trạm, lịch sử, thời gian trung bình; bản đồ vẽ từng kệ ở ô của nó, kệ đang chở vẽ theo xe.
 - Không dùng song song với nhiệm vụ của `mission_server` (cả hai cùng gửi đích cho Nav2).
 
+**Pin và tự về sạc.** `/battery_state` (`sensor_msgs/BatteryState`) do `battery_sim.py` (mô phỏng: pin 3S 9.9–12.6 V, hao theo thời gian + tốc độ + khi chở kệ, sạc khi xe chạm tiếp điểm trạm sạc) hoặc cầu nối STM32 đọc INA226 (xe thật) phát. Trạm sạc `tram_sac` có khối tiếp điểm cao 0.15 m (lidar thấy), xe tiến vào bằng `docking_server` (`SimpleChargingDock`, dock `charger_tram_sac`, xác nhận "đang sạc" bằng dòng > 0.5 A).
+- Rảnh thì vào trạm sạc. Trước mỗi đơn: pin < `battery_low` (30 %) + `order_reserve` (10 %, phần pin cho chính đơn đó) thì không nhận đơn, sạc tới `battery_full` (80 %) rồi làm tiếp. Đơn đang chạy luôn được làm xong.
+- Vào trạm: đi thẳng vào staging dọc trục trạm (như với kệ), rồi `DockRobot`. Rời trạm: `UndockRobot`; lỗi thì lùi thẳng 0.5 m (behavior `BackUp`).
+- Dashboard: ô **Pin** trên thanh trên (đỏ khi đang giữ để sạc, ⚡ khi đang sạc).
+- Thử nhanh: `ros2 launch agv_gazebo sim.launch.py nav:=true battery_time_scale:=8 battery_initial:=0.45` (hao / sạc nhanh gấp 8).
+
+Kết quả (pin đầu 45 %, nhanh gấp 8, 3 đơn): 3/3 đơn xong; sau đơn 1 pin 30 % → dừng nhận đơn, vào trạm, sạc 28 → 80 %, rời trạm làm 2 đơn còn lại, hết đơn thì về sạc (57–77 s mỗi đơn).
+
 Thử trong mô phỏng (3 đơn, 1 đơn gấp, 1 đơn huỷ, tự bấm xác nhận sau 3 s), 2 lần: mỗi lần **3/3 đơn xong, đơn huỷ không chạy, 0 lỗi**; đơn gấp chạy trước đơn thường tạo trước nó; 59–111 s mỗi đơn (TB 85 s); kệ về ô lệch 1.7–8.1 cm. Lần 2 có 2 chặng (1 lần chui gầm, 1 lần lùi ra) báo va chạm, thử lại thì qua.
 
 ## Nhiệm vụ kho: `agv_mission`
