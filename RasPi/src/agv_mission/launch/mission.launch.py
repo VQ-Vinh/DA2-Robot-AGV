@@ -39,7 +39,7 @@ def generate_launch_description():
         Node(
             package='agv_mission', executable='web_dashboard.py',
             # Khong dung use_sim_time: chi lay TF moi nhat, khong can dong ho. Bat len thi node phai
-            # nhan /clock ~1000 tin/s cua Gazebo, ton ~50 % mot nhan CPU chi de doc dong ho.
+            # nhan /clock moi buoc vat ly cua Gazebo (333 tin/s), ton CPU chi de doc dong ho.
             parameters=[{
                 'stations_file': PathJoinSubstitution([pkg, 'config', 'stations.yaml']),
                 'missions_file': PathJoinSubstitution([pkg, 'config', 'missions.yaml']),
