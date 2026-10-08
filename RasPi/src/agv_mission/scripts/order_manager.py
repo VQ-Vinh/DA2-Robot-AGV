@@ -4,6 +4,7 @@
 Mot don = "dua ke <ke> toi tram <tram>". Xe lam lan luot:
   toi staging truoc o -> chui gam (shelf_dock, theo chan ke) -> nang -> lui ra -> cho ke toi tram
   -> CHO NGUOI XAC NHAN da lay hang -> toi staging -> tra ke vao o (slot_dock) -> ha -> lui ra
+  Truoc khi nang / ha: kiem tra xe thang truc o (checked_dock), sai thi lui ra vao lai.
 Het don thi vao tram sac (DockRobot dock charger_<idle_station>) va sac.
 
 Pin (/battery_state, battery_sim hoac INA226 tren xe that): truoc moi don, pin < battery_low +
@@ -49,14 +50,16 @@ from geometry_msgs.msg import PoseStamped, Twist
 from geometry_msgs.msg import Point
 from lifecycle_msgs.msg import State
 from lifecycle_msgs.srv import GetState
-from nav2_msgs.action import BackUp, DockRobot, NavigateThroughPoses, NavigateToPose, UndockRobot
+from nav2_msgs.action import BackUp, DockRobot, NavigateThroughPoses, NavigateToPose, Spin, UndockRobot
 from nav2_msgs.srv import ClearEntireCostmap
 from rclpy.action import ActionClient
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
 from sensor_msgs.msg import BatteryState
+from rclpy.time import Time
 from std_msgs.msg import Bool, String
+from tf2_ros import Buffer, TransformException, TransformListener
 
 STEP_NAME = {
     'staging': 'toi truoc o ke', 'dock': 'chui gam', 'lift': 'nang ke', 'undock': 'lui ra',
@@ -100,6 +103,16 @@ class OrderManager(Node):
         self.blocked_wait_s = self.declare_parameter('blocked_wait_s', 60.0).value     # ... toi da, roi bao nguoi
         self.stall_alarm_s = self.declare_parameter('stall_alarm_s', 15.0).value       # khong tien ve dich -> canh bao
         self.max_attempts = self.declare_parameter('max_attempts', 2).value            # lan thu mot don truoc khi bo
+        # Docking chi kiem khoang cach toi tam o, khong kiem huong -> xe co the "vao xong" ma lech 22-50 deg
+        # (REPORT.md 4.14). Kiem tra truoc khi nang / ha (checked_dock): lech huong > dock_yaw_tol
+        # hoac (tra ke) lech vi tri > dock_pos_tol thi lui ra staging vao lai (toi da dock_attempts lan)
+        self.dock_yaw_tol = math.radians(self.declare_parameter('dock_yaw_tol_deg', 8.0).value)
+        self.dock_pos_tol = self.declare_parameter('dock_pos_tol', 0.10).value   # ke cach ke ben canh 0.35 m
+        self.dock_attempts = self.declare_parameter('dock_attempts', 3).value
+        # Spin quay thua ~30 deg (vung chet 1.5 rad/s + tre odom + ham, do o lan thu s2): chi quay tai cho khi
+        # lech > turn_min, va xin bot spin_coast
+        self.spin_coast = math.radians(self.declare_parameter('spin_coast_deg', 30.0).value)
+        self.turn_min = math.radians(self.declare_parameter('turn_min_deg', 40.0).value)
         self.fault = None          # {'kind', 'msg', 'resumable'}: xe dung, cho nguoi
         self.alarm = None          # canh bao khong dung xe (vd duong bi chan, dang cho thu lai)
         self.active = []           # goal handle dang chay (de huy khi co su co); ClientGoalHandle khong hash duoc -> list
@@ -132,10 +145,13 @@ class OrderManager(Node):
         self.create_subscription(Bool, 'lift/has_load', lambda m: setattr(self, 'has_load', m.data), latched)
         self.create_subscription(BatteryState, 'battery_state', self.on_battery, 10)
         self.nav = ActionClient(self, NavigateToPose, 'navigate_to_pose')
-        self.nav_through = ActionClient(self, NavigateThroughPoses, 'navigate_through_poses')
         self.dock = ActionClient(self, DockRobot, 'dock_robot')
         self.undock = ActionClient(self, UndockRobot, 'undock_robot')
         self.backup = ActionClient(self, BackUp, 'backup')
+        self.nav_through = ActionClient(self, NavigateThroughPoses, 'navigate_through_poses')
+        self.spin_client = ActionClient(self, Spin, 'spin')
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
         # Nav2 chi nhan dich khi da "active" (action server co the co truoc do va tu choi moi dich)
         self.state_clients = [self.create_client(GetState, f'{n}/get_state')
                               for n in ('bt_navigator', 'docking_server')]
@@ -480,16 +496,40 @@ class OrderManager(Node):
         raise Fault(**self.fault)
 
     # ---------- cac buoc ----------
-    def go_staging(self, slot):
-        sl = self.slots[slot]
-        c, s = math.cos(sl['yaw']), math.sin(sl['yaw'])
-        d, pre = self.staging_offset, self.staging_offset + self.straight
+    def straight_to(self, x, y, yaw, d):
+        """Toi staging cach (x, y) d m doc truc yaw: di qua diem xa hon straight_approach m cung truc ->
+        doan cuoi thang, mui xe thang truc. Quay tai cho cuoi chang thi vung chet dong co lam lech toi 30-50 deg
+        (REPORT 4.9); dung, quay tai cho roi di thang cung khong duoc vi Spin quay thua ~30 deg (REPORT 4.14)."""
+        c, s = math.cos(yaw), math.sin(yaw)
+        pre = d + self.straight
         g = NavigateThroughPoses.Goal()
-        # Di thang vao staging doc truc o: quay tai cho voi vung chet dong co lech toi 30-50 deg (REPORT 4.9)
-        g.poses = [self.pose(sl['x'] - pre * c, sl['y'] - pre * s, sl['yaw']),
-                   self.pose(sl['x'] - d * c, sl['y'] - d * s, sl['yaw'])]
+        g.poses = [self.pose(x - pre * c, y - pre * s, yaw), self.pose(x - d * c, y - d * s, yaw)]
         ok, r = self.action(self.nav_through, g, 180.0)
         return ok, '' if ok or r is None else f'error_code {r.error_code}'
+
+    def go_staging(self, slot):
+        sl = self.slots[slot]
+        return self.straight_to(sl['x'], sl['y'], sl['yaw'], self.staging_offset)
+
+    def coarse_turn(self, yaw):
+        """Lech huong lon (> turn_min): quay tai cho cho bot lech. Vung chet day Spin len >= 1.5 rad/s, cong tre
+        odom va ham: moi lan Spin quay thua ~30 deg (xin 3 deg -> quay 40, lan thu s2) nen khong sua duoc lech
+        nho tai cho; lech nho de bo dieu khien docking sua trong luc di (lui ra, vao lai)."""
+        for _ in range(2):
+            p = self.robot_pose()
+            if p is None:
+                return
+            e = math.atan2(math.sin(yaw - p[2]), math.cos(yaw - p[2]))
+            if abs(e) <= self.turn_min:
+                return
+            cmd = e - math.copysign(self.spin_coast, e)
+            self.spin(cmd)
+            time.sleep(0.5)
+            q = self.robot_pose()
+            if q is not None:
+                got = math.atan2(math.sin(q[2] - p[2]), math.cos(q[2] - p[2]))
+                self.get_logger().info(f'quay bot lech: lech {math.degrees(e):+.0f} deg, xin {math.degrees(cmd):+.0f}, '
+                                       f'quay that {math.degrees(got):+.0f}')
 
     def dock_into(self, slot, detect):
         g = DockRobot.Goal()
@@ -503,6 +543,66 @@ class OrderManager(Node):
         ok, r = self.action(self.dock, g, 120.0)
         ok = ok and r is not None and r.success
         return ok, '' if ok or r is None else f'error_code {r.error_code}'
+
+    def robot_pose(self):
+        """(x, y, yaw) cua base_link trong map (AMCL), None neu chua co TF."""
+        try:
+            t = self.tf_buffer.lookup_transform('map', 'base_link', Time())
+        except TransformException:
+            return None
+        q = t.transform.rotation
+        return (t.transform.translation.x, t.transform.translation.y,
+                math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z)))
+
+    def slot_error(self, slot):
+        """Sai lech xe so voi o: (huong rad, doc m, ngang m) theo truc o, None neu chua co TF."""
+        p = self.robot_pose()
+        if p is None:
+            return None
+        sl = self.slots[slot]
+        c, s = math.cos(sl['yaw']), math.sin(sl['yaw'])
+        ex, ey = p[0] - sl['x'], p[1] - sl['y']
+        return math.atan2(math.sin(p[2] - sl['yaw']), math.cos(p[2] - sl['yaw'])), ex * c + ey * s, -ex * s + ey * c
+
+    def spin(self, angle):
+        g = Spin.Goal()
+        g.target_yaw = float(angle)
+        g.time_allowance.sec = 15
+        ok, _ = self.action(self.spin_client, g, 30.0)
+        return ok
+
+    def checked_dock(self, slot, detect):
+        """Docking vao o roi KIEM TRA tu the (AMCL) so voi truc o truoc khi nang / ha ke. Docking chi kiem
+        khoang cach toi dich, khong kiem huong: voi vung chet dong co xe co the "vao xong" ma lech 22-50 deg
+        (REPORT.md 4.14) -> ha ke xeo, hoac nang ke xeo (chan ke lot ra ngoai vung loc scan).
+        Sai: lech lon thi quay bot tai cho (giua o, an toan), lui thang ra staging, vao lai (dock_attempts lan)."""
+        info = ''
+        for attempt in range(self.dock_attempts):
+            if attempt:
+                err = self.slot_error(slot)
+                if err is not None:
+                    self.coarse_turn(self.slots[slot]['yaw'])
+                    err = self.slot_error(slot) or err
+                    if err[1] + self.staging_offset > 0.15:
+                        self.back_up(err[1] + self.staging_offset)
+                self.clear_costmaps()
+            ok, info = self.dock_into(slot, detect)
+            if not ok:
+                continue
+            time.sleep(0.5)                 # AMCL / TF cap nhat sau khi dung
+            err = self.slot_error(slot)
+            if err is None:
+                return True, ''
+            yaw, lon, lat = err
+            # Lay ke: ke co the dat lech trong o va docking bam theo chan ke -> chi kiem huong
+            if abs(yaw) <= self.dock_yaw_tol and (detect or math.hypot(lon, lat) <= self.dock_pos_tol):
+                if attempt:
+                    self.say(f'vao o {slot}: tu the dat sau {attempt + 1} lan (lech {math.degrees(yaw):+.1f} deg, '
+                             f'{100 * lon:+.0f} / {100 * lat:+.0f} cm)')
+                return True, ''
+            info = f'xe lech {math.degrees(yaw):+.0f} deg, doc {100 * lon:+.0f} cm, ngang {100 * lat:+.0f} cm'
+            self.say(f'vao o {slot}: {info}, lui ra vao lai (lan {attempt + 1}/{self.dock_attempts})')
+        return False, info
 
     def undock_from(self, dock_type):
         g = UndockRobot.Goal()
@@ -574,13 +674,13 @@ class OrderManager(Node):
 
         steps = [
             ('staging', lambda: self.retry('staging', lambda: self.go_staging(slot), nav=True)),
-            ('dock', lambda: self.retry('dock', lambda: self.dock_into(slot, detect=True))),
+            ('dock', lambda: self.retry('dock', lambda: self.checked_dock(slot, detect=True))),
             ('lift', lift_up),
             ('undock', lambda: self.retry('undock', lambda: self.undock_from('shelf_dock'))),
             ('to_station', lambda: self.retry('to_station', lambda: self.go_station(station), nav=True)),
             ('wait_confirm', lambda: self.wait_confirm(o)),
             ('return_staging', lambda: self.retry('return_staging', lambda: self.go_staging(slot), nav=True)),
-            ('return_dock', lambda: self.retry('return_dock', lambda: self.dock_into(slot, detect=False))),
+            ('return_dock', lambda: self.retry('return_dock', lambda: self.checked_dock(slot, detect=False))),
             ('lower', lower),
             ('return_undock', lambda: self.retry('return_undock', self.leave_slot)),
         ]
@@ -628,14 +728,9 @@ class OrderManager(Node):
             # Chua cham tiep diem: di thang vao staging truoc. Dang sac san (xe xuat phat ngay o tram) thi
             # KHONG di: phai quay dau sat khoi tiep diem va bi ket (REPORT.md 4.13); DockRobot thang se bao
             # "already docked" va ghi nho dock cho UndockRobot sau nay
-            c, s = math.cos(st['yaw']), math.sin(st['yaw'])
-            d, pre = self.charger_staging, self.charger_staging + self.straight
-            g = NavigateThroughPoses.Goal()
-            g.poses = [self.pose(st['x'] - pre * c, st['y'] - pre * s, st['yaw']),
-                       self.pose(st['x'] - d * c, st['y'] - d * s, st['yaw'])]
-            ok, r = self.action(self.nav_through, g, 180.0)
+            ok, info = self.straight_to(st['x'], st['y'], st['yaw'], self.charger_staging)
             if not ok:
-                return False, 'khong toi duoc truoc tram sac'
+                return False, f'khong toi duoc truoc tram sac: {info}'
         g = DockRobot.Goal()
         g.use_dock_id, g.dock_id = True, f'charger_{self.idle_station}'
         g.navigate_to_staging_pose = False
@@ -649,7 +744,7 @@ class OrderManager(Node):
 
     def leave_slot(self):
         """Lui ra khoi gam sau khi ha ke. UndockRobot loi (ke vua dat lech, chan ke sat footprint -> du bao va
-        cham) thi lui thang 1 m bang BackUp: duong lui la duong vua vao, khong quay."""
+        cham) thi lui thang 1 m bang BackUp: xe da thang truc o (checked_dock) nen duong lui la duong vua vao."""
         ok, info = self.undock_from('slot_dock')
         if ok:
             return True, ''
