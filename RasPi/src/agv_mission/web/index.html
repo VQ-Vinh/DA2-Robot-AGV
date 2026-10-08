@@ -70,11 +70,15 @@
       <section class="card order-card">
         <div class="order-head">
           <h2>Đơn hàng</h2>
-          <button class="btn ghost" id="o-pause" title="Tạm dừng / tiếp tục nhận đơn mới">Tạm dừng</button>
+          <div class="order-actions">
+            <button class="btn ghost" id="o-pause" title="Tạm dừng / tiếp tục nhận đơn mới">Tạm dừng</button>
+            <button class="btn danger" id="o-estop" title="Huỷ mọi lệnh đang chạy, xe dừng ngay">DỪNG KHẨN</button>
+          </div>
         </div>
+        <div class="alert warn" id="o-alarm" hidden></div>
         <div class="alert" id="o-error" hidden>
           <span id="o-error-text"></span>
-          <button class="btn danger" id="o-ack">Đã xử lý</button>
+          <button class="btn danger" id="o-ack" title="Đã kiểm tra / dọn xong, xe làm tiếp">Đã xử lý</button>
         </div>
         <div class="o-current" id="o-current">Không có đơn đang chạy</div>
         <button class="btn primary big wide" id="o-confirm" hidden>Đã lấy hàng xong — trả kệ</button>

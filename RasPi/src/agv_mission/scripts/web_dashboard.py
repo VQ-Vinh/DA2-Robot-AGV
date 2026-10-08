@@ -36,7 +36,7 @@ from std_msgs.msg import String
 from tf2_ros import Buffer, TransformException, TransformListener
 
 ALLOWED = {'goto', 'goto_xy', 'run', 'seq', 'cancel', 'status', 'list'}
-ORDER_ALLOWED = {'add', 'cancel', 'confirm', 'pause', 'resume', 'ack'}   # sau tien to "order"
+ORDER_ALLOWED = {'add', 'cancel', 'confirm', 'pause', 'resume', 'ack', 'estop', 'shelf'}   # sau tien to "order"
 MAX_CMD_LEN = 1000
 MAX_PATH_POINTS = 200
 LOG_KEEP = 100
