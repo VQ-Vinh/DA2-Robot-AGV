@@ -8,7 +8,8 @@ Trinh duyet khong noi chuyen voi ROS/DDS: node nay dung giua, chi dung thu vien 
   GET  /                 file tinh trong share/agv_mission/web
   GET  /api/config       vi tri (stations.yaml) va nhiem vu (missions.yaml)
   GET  /api/map          ban do /map: kich thuoc, do phan giai, goc, o ban do (base64), version
-  GET  /api/events       (?after=<id nhat ky cuoi>&boot=<ma phien>) Server-Sent Events ~5 Hz: vi tri xe, trang thai nhiem vu, duong di Nav2,
+  GET  /api/keepout      mat na vung cam /keepout_filter_mask (pallet thap lidar khong thay), cung dang
+  GET  /api/events       (?after=<id nhat ky cuoi>&boot=<ma phien>) Server-Sent Events ~5 Hz: version cac lop ban do, vi tri xe, trang thai nhiem vu, duong di Nav2,
                          dong nhat ky moi, ket noi toi mission_server
   POST /api/command      {"cmd": "run giao_hang"} -> /mission/command (chi nhan cac lenh trong ALLOWED)
 
@@ -64,8 +65,8 @@ class Dashboard(Node):
 
         # Du lieu chung giua thread ROS va cac thread HTTP
         self.lock = threading.Lock()
-        self.map = None            # dict da ma hoa san cho /api/map
-        self.map_version = 0
+        self.grids = {'map': None, 'keepout': None}   # dict da ma hoa san cho /api/<ten>
+        self.grid_version = 0      # tang moi khi mot lop doi; moi lop giu version cua no
         self.pose = None           # {x, y, yaw}
         self.path = []             # [[x, y], ...]
         self.state = None          # dict tu /mission/state
@@ -79,7 +80,10 @@ class Dashboard(Node):
         self.cmd_pub = self.create_publisher(String, 'mission/command', 10)
         self.create_subscription(String, 'mission/status', self.on_status, latched)
         self.create_subscription(String, 'mission/state', self.on_state, latched)
-        self.create_subscription(OccupancyGrid, 'map', self.on_map, map_qos)
+        self.create_subscription(OccupancyGrid, 'map', lambda m: self.on_grid('map', m), map_qos)
+        # Vung cam khong nam trong /map (lidar quet qua phia tren pallet), Nav2 doc tu topic rieng
+        self.create_subscription(OccupancyGrid, self.declare_parameter(
+            'keepout_topic', 'keepout_filter_mask').value, lambda m: self.on_grid('keepout', m), map_qos)
         self.create_subscription(Path, 'plan', self.on_path, 10)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -100,19 +104,19 @@ class Dashboard(Node):
         with self.lock:
             self.state = state
 
-    def on_map(self, msg):
+    def on_grid(self, layer, msg):
         # -1 (chua biet) -> 255, 0..100 giu nguyen; 1 byte moi o
         cells = bytes(255 if v < 0 else v for v in msg.data)
         info = msg.info
         with self.lock:
-            self.map_version += 1
-            self.map = {
-                'version': self.map_version,
+            self.grid_version += 1
+            self.grids[layer] = {
+                'version': self.grid_version,
                 'width': info.width, 'height': info.height, 'resolution': info.resolution,
                 'origin': [info.origin.position.x, info.origin.position.y],
                 'data': base64.b64encode(cells).decode('ascii'),
             }
-        self.get_logger().info(f'Ban do {info.width}x{info.height} o, {info.resolution} m/o')
+        self.get_logger().info(f'Lop {layer}: {info.width}x{info.height} o, {info.resolution:.3f} m/o')
 
     def on_path(self, msg):
         pts = [[round(p.pose.position.x, 3), round(p.pose.position.y, 3)] for p in msg.poses]
@@ -142,7 +146,7 @@ class Dashboard(Node):
                 'pose': self.pose,
                 'path': self.path,
                 'state': self.state,
-                'map_version': self.map_version,
+                'grids': {k: (g['version'] if g else 0) for k, g in self.grids.items()},
                 'log': [{'id': i, 't': t, 'text': s} for i, t, s in self.log if i > after_log_id],
                 'link': self.cmd_pub.get_subscription_count() > 0,
             }
@@ -178,13 +182,13 @@ def make_handler(node):
             path = self.path.split('?', 1)[0]
             if path == '/api/config':
                 self.send_json(node.config)
-            elif path == '/api/map':
+            elif path in ('/api/map', '/api/keepout'):
                 with node.lock:
-                    m = node.map
-                if m is None:
-                    self.send_json({'error': 'chua co ban do'}, 404)
+                    g = node.grids[path[5:]]
+                if g is None:
+                    self.send_json({'error': 'chua nhan duoc lop nay'}, 404)
                 else:
-                    self.send_json(m)
+                    self.send_json(g)
             elif path == '/api/events':
                 query = parse_qs(self.path.split('?', 1)[1] if '?' in self.path else '')
                 try:

@@ -17,6 +17,7 @@
   --map-bg: #e6e9ee;
   --path: #2563eb;
   --robot: #e11d48;
+  --keepout: #ef4444;
   --st-charge: #16a34a;
   --st-receive: #ea8c00;
   --st-shelf: #3b82f6;
@@ -43,6 +44,7 @@
     --map-bg: #14171b;
     --path: #60a5fa;
     --robot: #fb7185;
+  --keepout: #f87171;
     --st-charge: #22c55e;
     --st-receive: #f59e0b;
     --st-shelf: #60a5fa;
@@ -68,6 +70,7 @@
   --map-bg: #14171b;
   --path: #60a5fa;
   --robot: #fb7185;
+  --keepout: #f87171;
   --st-charge: #22c55e;
   --st-receive: #f59e0b;
   --st-shelf: #60a5fa;
@@ -166,6 +169,22 @@ button, select, input { font: inherit; color: inherit; }
 .tool.icon { width: 34px; padding: 6px 0; text-align: center; }
 .tool:hover { border-color: var(--accent); }
 .tool.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+
+.legend {
+  position: absolute; right: 12px; bottom: 12px;
+  display: flex; flex-wrap: wrap; gap: 4px 12px;
+  max-width: calc(100% - 24px);
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend .sw { width: 10px; height: 10px; border-radius: 50%; }
+.legend .sw.sq { border-radius: 2px; opacity: 0.6; }
+.station-card:not([hidden]) ~ .legend { display: none; }
 
 .map-hint {
   position: absolute; left: 50%; top: 50%;

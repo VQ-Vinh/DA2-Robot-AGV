@@ -22,7 +22,8 @@ let view = null;           // {s, ox, oy}: pixel man hinh moi o ban do, vi tri g
 let gotoMode = false;
 let selected = null;       // ten vi tri dang chon
 let draft = loadDraft();
-let mapLoading = false;
+let keepout = null;        // mat na vung cam (pallet thap lidar khong thay), cung dang voi map
+const loading = {};        // lop dang tai: {map: true, keepout: true}
 let colors = {};
 
 // ---------- tien ich ----------
@@ -43,7 +44,7 @@ function readColors() {
   colors = {
     free: rgb(css('--map-free')), occ: rgb(css('--map-occ')), unknown: rgb(css('--map-unknown')),
     path: css('--path'), robot: css('--robot'), text: css('--text'), surface: css('--surface'),
-    accent: css('--accent'),
+    accent: css('--accent'), keepout: rgb(css('--keepout')),
   };
   for (const [k, v] of Object.entries(KIND_VAR)) colors[k] = css(v);
 }
@@ -102,28 +103,35 @@ async function send(cmd, confirmIfBusy = true) {
 }
 
 // ---------- ban do ----------
-async function loadMap() {
-  if (mapLoading) return;
-  mapLoading = true;
+async function loadGrid(layer) {
+  if (loading[layer]) return;
+  loading[layer] = true;
   try {
-    const r = await fetch('api/map');
+    const r = await fetch(`api/${layer}`);
     if (!r.ok) return;
-    const m = await r.json();
-    const cells = Uint8Array.from(atob(m.data), (c) => c.charCodeAt(0));
-    map = { ...m, cells };
-    renderMapImage();
-    if (!view) fit();
-    $('#map-hint').hidden = true;
+    const g = await r.json();
+    g.cells = Uint8Array.from(atob(g.data), (c) => c.charCodeAt(0));
+    delete g.data;
+    if (layer === 'map') {
+      map = g;
+      renderMapImage();
+      if (!view) fit();
+      $('#map-hint').hidden = true;
+    } else {
+      keepout = g;
+      renderKeepoutImage();
+      draw();
+    }
   } catch (e) {
     // thu lai o lan cap nhat sau
   } finally {
-    mapLoading = false;
+    loading[layer] = false;
   }
 }
 
-function renderMapImage() {
-  if (!map) return;
-  const { width: w, height: h, cells } = map;
+// Ve OccupancyGrid thanh anh, moi o 1 pixel; color(v) tra [r, g, b, a] hoac null (trong suot)
+function gridImage(grid, color) {
+  const { width: w, height: h, cells } = grid;
   const off = document.createElement('canvas');
   off.width = w;
   off.height = h;
@@ -132,17 +140,29 @@ function renderMapImage() {
   for (let j = 0; j < h; j++) {
     const row = (h - 1 - j) * w;     // hang 0 cua OccupancyGrid o duoi cung
     for (let i = 0; i < w; i++) {
-      const v = cells[j * w + i];
-      const c = v === 255 ? colors.unknown : v >= 65 ? colors.occ : colors.free;
+      const c = color(cells[j * w + i]);
+      if (!c) continue;
       const p = (row + i) * 4;
       img.data[p] = c[0];
       img.data[p + 1] = c[1];
       img.data[p + 2] = c[2];
-      img.data[p + 3] = 255;
+      img.data[p + 3] = c[3];
     }
   }
   octx.putImageData(img, 0, 0);
-  map.image = off;
+  return off;
+}
+
+function renderMapImage() {
+  if (!map) return;
+  map.image = gridImage(map, (v) => [...(v === 255 ? colors.unknown : v >= 65 ? colors.occ : colors.free), 255]);
+}
+
+function renderKeepoutImage() {
+  if (!keepout) return;
+  // Mat na Nav2 (mode scale): o den = 100 = cam vao
+  const c = [...colors.keepout, 150];
+  keepout.image = gridImage(keepout, (v) => (v !== 255 && v >= 50 ? c : null));
 }
 
 function fit() {
@@ -212,6 +232,14 @@ function draw() {
 
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(map.image, view.ox, view.oy, map.width * view.s, map.height * view.s);
+
+  // Vung cam: co the khac goc / kich thuoc voi /map nen dat theo toa do cua chinh no
+  if (keepout && keepout.image) {
+    const k = keepout;
+    const [kx, ky] = toScreen(k.origin[0], k.origin[1] + k.height * k.resolution);
+    const scale = (k.resolution / map.resolution) * view.s;
+    ctx.drawImage(k.image, kx, ky, k.width * scale, k.height * scale);
+  }
 
   // Duong di Nav2 (chi khi xe dang di)
   if (live.path.length > 1 && live.state && live.state.phase === 'navigating') {
@@ -552,7 +580,9 @@ function connect() {
       live.state = d.state;
       renderStatus();
     }
-    if (d.map_version && (!map || map.version !== d.map_version)) loadMap();
+    const g = d.grids || {};
+    if (g.map && (!map || map.version !== g.map)) loadGrid('map');
+    if (g.keepout && (!keepout || keepout.version !== g.keepout)) loadGrid('keepout');
     appendLog(d.log);
     if (d.log.length) lastLogId = d.log[d.log.length - 1].id;
     renderPose();
@@ -578,6 +608,7 @@ new ResizeObserver(() => { if (map && view) draw(); else if (map) fit(); }).obse
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
   readColors();
   renderMapImage();
+  renderKeepoutImage();
   renderConfig();
   draw();
 });
