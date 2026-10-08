@@ -76,12 +76,13 @@ ros2 run agv_mission agv_cmd.py cancel                    # dừng
 ```
 Lệnh mới: `seq ke_A1:pick khu_nhan_hang:drop:2 tram_sac:charge` (chuỗi tự tạo, mỗi bước `vị_trí[:task[:giây chờ]]`), `goto_xy 1.5 1.0 0` (đi tới điểm bất kỳ, frame `map`).
 
-**Web dashboard** (chạy sẵn cùng `mission.launch.py` / `sim.launch.py nav:=true`): mở `http://localhost:8080` trên PC, hoặc `http://<IP Tailscale của máy chạy>:8080` từ điện thoại (trên xe thật: `http://sms-pi:8080`). Trên trang có bản đồ + vị trí xe + đường Nav2, nút **DỪNG**, chạy nhiệm vụ định sẵn, tạo chuỗi nhiệm vụ, bấm một trạm trên bản đồ để đi tới, chế độ "Bấm để đi" tới điểm bất kỳ, và nhật ký. Tắt bằng `dashboard:=false`, đổi cổng bằng `port:=...`. **Chưa có đăng nhập**, chỉ mở trong LAN / Tailscale.
+**Web dashboard** (chạy sẵn cùng `mission.launch.py` / `sim.launch.py nav:=true`): mở `http://localhost:8080` trên PC, hoặc `http://<IP Tailscale của máy chạy>:8080` từ điện thoại (trên xe thật: `http://sms-pi:8080`). Trên trang có bản đồ + vị trí xe + đường Nav2, nút **DỪNG**, chạy nhiệm vụ định sẵn, tạo chuỗi nhiệm vụ, vùng cấm (pallet thấp) tô đỏ, bấm một trạm trên bản đồ để đi tới, chế độ "Bấm để đi" tới điểm bất kỳ, và nhật ký. Tắt bằng `dashboard:=false`, đổi cổng bằng `port:=...`. **Chưa có đăng nhập**, chỉ mở trong LAN / Tailscale.
 
 | API | |
 |---|---|
 | `GET /api/config` | vị trí và nhiệm vụ (từ `stations.yaml`, `missions.yaml`) |
 | `GET /api/map` | bản đồ `/map` (ô base64, 255 = chưa biết) |
+| `GET /api/keepout` | mặt nạ vùng cấm `/keepout_filter_mask` (pallet thấp lidar không thấy), cùng dạng |
 | `GET /api/events` | Server-Sent Events 5 Hz: `pose`, `path`, `state`, `log`, `link` |
 | `POST /api/command` | `{"cmd": "run giao_hang"}`: các lệnh `goto`, `goto_xy`, `run`, `seq`, `cancel`, `status`, `list` |
 
