@@ -45,11 +45,13 @@ amcl:
     scan_topic: scan
     # AGV: xe xuat phat dung cho bat dau lap ban do (goc frame map), khoi phai bam "2D Pose Estimate"
     set_initial_pose: true
+    # AGV: xe xuat phat tai tram sac (stations.yaml tram_sac, sim.launch.py x/y/yaw:=auto). Dat xe cho
+    # khac thi bam "2D Pose Estimate" tren RViz.
     initial_pose:
-      x: 0.0
+      x: -0.45
       y: 0.0
       z: 0.0
-      yaw: 0.0
+      yaw: 3.14159
 
 bt_navigator:
   ros__parameters:

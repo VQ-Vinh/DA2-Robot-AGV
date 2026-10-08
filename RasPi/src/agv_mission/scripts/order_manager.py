@@ -624,14 +624,18 @@ class OrderManager(Node):
         De docking_server tu di thi xe dang trong 0.5 m quanh staging se chui cheo vao luon va quet goc
         khoi tiep diem (REPORT.md 4.12)."""
         st = self.stations[self.idle_station]
-        c, s = math.cos(st['yaw']), math.sin(st['yaw'])
-        d, pre = self.charger_staging, self.charger_staging + self.straight
-        g = NavigateThroughPoses.Goal()
-        g.poses = [self.pose(st['x'] - pre * c, st['y'] - pre * s, st['yaw']),
-                   self.pose(st['x'] - d * c, st['y'] - d * s, st['yaw'])]
-        ok, r = self.action(self.nav_through, g, 180.0)
-        if not ok:
-            return False, 'khong toi duoc truoc tram sac'
+        if not (self.battery and self.battery[1]):
+            # Chua cham tiep diem: di thang vao staging truoc. Dang sac san (xe xuat phat ngay o tram) thi
+            # KHONG di: phai quay dau sat khoi tiep diem va bi ket (REPORT.md 4.13); DockRobot thang se bao
+            # "already docked" va ghi nho dock cho UndockRobot sau nay
+            c, s = math.cos(st['yaw']), math.sin(st['yaw'])
+            d, pre = self.charger_staging, self.charger_staging + self.straight
+            g = NavigateThroughPoses.Goal()
+            g.poses = [self.pose(st['x'] - pre * c, st['y'] - pre * s, st['yaw']),
+                       self.pose(st['x'] - d * c, st['y'] - d * s, st['yaw'])]
+            ok, r = self.action(self.nav_through, g, 180.0)
+            if not ok:
+                return False, 'khong toi duoc truoc tram sac'
         g = DockRobot.Goal()
         g.use_dock_id, g.dock_id = True, f'charger_{self.idle_station}'
         g.navigate_to_staging_pose = False

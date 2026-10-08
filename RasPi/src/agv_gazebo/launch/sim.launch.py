@@ -56,11 +56,21 @@ def generate_launch_description():
         parameters=[{'robot_description': robot_description, 'use_sim_time': True}],
         output='screen')
 
+    # Cho xuat phat mac dinh ("auto"):
+    #   - lap ban do (slam:=true): world (-4.5, 0, 0) = goc frame map (ban do va shelves.yaml dua tren goc nay)
+    #   - con lai: dung tai tram sac (map (-0.45, 0, pi) = world (-4.95, 0)), nhu AMR that bat dau ngay o
+    #     tram; AMCL dat san vi tri nay (nav2.yaml). Xuat phat o goc map, quay lung ve tram sac, thi xe
+    #     phai di vong ra 1.9 m de vao sac va hay vao hong o lan dau (REPORT.md 4.13).
+    def auto(name, slam_value, dock_value):
+        v = LaunchConfiguration(name)
+        return PythonExpression(["'", v, "' if '", v, "' != 'auto' else ('", slam_value, "' if '", slam,
+                                 "' == 'true' else '", dock_value, "')"])
+
     spawn = Node(
         package='ros_gz_sim', executable='create',
         arguments=['-topic', 'robot_description', '-name', 'agv',
-                   '-x', LaunchConfiguration('x'), '-y', LaunchConfiguration('y'),
-                   '-z', '0.02', '-Y', LaunchConfiguration('yaw')],
+                   '-x', auto('x', '-4.5', '-4.95'), '-y', auto('y', '0.0', '0.0'),
+                   '-z', '0.02', '-Y', auto('yaw', '0.0', '3.14159')],
         output='screen')
 
     bridge = Node(
@@ -162,9 +172,10 @@ def generate_launch_description():
         DeclareLaunchArgument('rviz', default_value='true', description='Mo RViz'),
         DeclareLaunchArgument('steering', default_value='true',
                               description='Mo rqt_robot_steering (thanh truot lai xe)'),
-        DeclareLaunchArgument('x', default_value='-4.5', description='Vi tri xuat phat x (m)'),
-        DeclareLaunchArgument('y', default_value='0.0', description='Vi tri xuat phat y (m)'),
-        DeclareLaunchArgument('yaw', default_value='0.0', description='Huong xuat phat (rad)'),
+        DeclareLaunchArgument('x', default_value='auto',
+                              description='Xuat phat x (m, world). auto: goc map khi slam, tram sac khi khong'),
+        DeclareLaunchArgument('y', default_value='auto', description='Xuat phat y (m, world)'),
+        DeclareLaunchArgument('yaw', default_value='auto', description='Huong xuat phat (rad)'),
         DeclareLaunchArgument('slam', default_value='false',
                               description='true: chay slam_toolbox lap ban do'),
         DeclareLaunchArgument('nav', default_value='false',
