@@ -65,6 +65,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 08/10/2026 | Kho Kiva, giai đoạn 2: nhận diện kệ bằng chân kệ | #14 |
 | 08/10/2026 | Kho Kiva, giai đoạn 3: quản lý đơn hàng | #15 |
 | 08/10/2026 | Kho Kiva, giai đoạn 4: pin và tự về sạc | #16 |
+| 08/10/2026 | Kho Kiva, giai đoạn 5: xử lý sự cố | #17 |
 
 ---
 
@@ -471,6 +472,40 @@ Các sự cố gặp phải, theo thứ tự:
 - **Còn lại:** chưa xử lý pin cạn giữa đơn (pin mô phỏng xuống 0 % vẫn chạy); vị trí tiếp điểm dựa vào AMCL (±5 cm), xe thật cần tiếp điểm lò xo đủ rộng hoặc nhận diện trạm sạc.
 - **Bài học:** vật cản thật mà cảm biến không thấy là nguy hiểm, kể cả khi "cố ý" làm vậy để bản đồ khỏi đổi; sửa bản đồ rẻ hơn nhiều so với tìm ra vì sao xe "đi" 5 m mà vẫn đứng yên.
 
+### 4.13. Kho Kiva, giai đoạn 5: xử lý sự cố (PR #17)
+- **Mục tiêu:** xe không được "chết lặng" hay tự làm điều nguy hiểm khi có sự cố: dừng đúng lúc, báo cho người, và làm tiếp đúng chỗ sau khi người xử lý xong.
+- **Cách làm** (trong `order_manager`):
+  - Đơn hàng là danh sách bước có chỉ số; sự cố "tiếp tục được" (dừng khẩn, đường bị chặn, lỗi một bước khi đang chở) → chờ người bấm "Đã xử lý" (`ack`) rồi **làm lại đúng bước đang dở**. Sự cố "không tiếp tục được" (rơi kệ, cơ cấu nâng lỗi) → đơn lỗi, kệ "chưa rõ vị trí" cho tới khi người cập nhật (`shelf <kệ> <ô>`).
+  - Giám sát 5 Hz: mất tín hiệu "có kệ" > 1 s khi đang chở, cơ cấu nâng báo lỗi. Khi có sự cố: huỷ mọi goal Nav2 / docking đang chạy, gửi vận tốc 0.
+  - Đường bị chặn: theo dõi feedback của Nav2 (`number_of_recoveries`, `distance_remaining`): Nav2 bắt đầu tự hồi phục hoặc không tiến về đích > 15 s → cảnh báo; > 60 s (hoặc chặng lỗi hẳn sau khi thử lại) → sự cố chờ người dọn đường.
+  - Lỗi trước khi nâng kệ → trả đơn về hàng đợi (tối đa 2 lần).
+  - Dashboard: nút **DỪNG KHẨN**, dải cảnh báo vàng, dải sự cố đỏ + nút "Đã xử lý".
+  - Bài thử `fault_test.py` gây sự cố có chủ ý trong lúc xe đang chở kệ: dựng tường chắn ngang kho bằng dịch vụ `create` của Gazebo (rồi gỡ), gửi dừng khẩn, dịch kệ ra khỏi xe bằng `set_pose`.
+- **Sai lầm / sự cố khi làm** (10 lần chạy bài thử sự cố + 4 lần thử đơn hàng bình thường):
+
+  | # | Sự cố | Nguyên nhân (tìm bằng cách nào) | Cách sửa |
+  |---|---|---|---|
+  | 1 | Không đơn nào chạy | Log: luồng xử lý đơn chết vì `unhashable type: 'ClientGoalHandle'` (giữ goal handle trong `set`) | Dùng `list` |
+  | 2 | Tường chắn 25 s mà không có cảnh báo nào, đơn vẫn xong (chặng dài 20 → 48 s) | Log Nav2: không có lỗi hay hồi phục; lidar chỉ thấy từng đoạn tường, planner liên tục vạch đường vòng qua phần chưa thấy → Nav2 "đang đi" chứ không lỗi | Theo dõi tiến độ `distance_remaining` (không tiến > 15 s → cảnh báo, > 60 s → sự cố), cộng số lần hồi phục |
+  | 3 | Bước lùi ra (đang đội kệ) lỗi thì đơn bị **trả về hàng đợi và chạy lại từ đầu** — xe đội kệ đi tới staging, Nav2 hồi phục 31 lần | Phân loại sai: coi mọi `OrderError` là "lỗi trước khi nâng kệ" | Lỗi bất kỳ khi đang chở → sự cố chờ người, làm lại đúng bước đó; thêm chờ 1.5 s sau khi nâng cho costmap cập nhật |
+  | 4 | Một số chỗ ném sự cố mà không ghi trạng thái → "Đã xử lý" không được nhận, xe chờ mãi | Đọc lại code: `ack` chỉ nhận khi `self.fault` có giá trị | Mọi sự cố đi qua `trigger_fault` |
+  | 5 | Kết quả bài thử lộn xộn (đơn lạ, dừng khẩn sai lúc) | Bài thử cũ vẫn chạy và gửi lệnh vào mô phỏng mới (cùng domain); script dọn dẹp quên giết `fault_test.py` | Dọn dẹp giết mọi script thử |
+  | 6 | Bài thử "đường bị chặn" chờ nhau với xe | Sự cố tới sau 75 s (Nav2 hồi phục + thử lại + chờ 60 s) mà kịch bản chỉ bấm "Đã xử lý" đúng một lần lúc gỡ tường | Kịch bản thấy sự cố lúc nào thì bấm lúc đó |
+  | 7 | Chạy lại bài thử đơn hàng bình thường: 1 đơn trả kệ vào ô S2 lỗi 2 lần, xe dừng chờ người | Log docking: va chạm khi xe (đang chở) lệch ~0.3 m vào ô — footprint vuông 0.84 m chạm chân kệ ô S1 bên cạnh (khe chỉ ~17 cm mỗi bên). Footprint vuông đặt từ giai đoạn 1 cho kệ lệch 7 cm mọi hướng; từ giai đoạn 2 kệ chỉ lệch theo chiều dọc | Footprint khi chở hình chữ nhật: dọc ±0.44 m, ngang ±0.39 m |
+  | 8 | Xe kẹt sát khối trạm sạc 60 s ngay đơn đầu | Vào trạm sạc lỗi rồi nhận đơn đi luôn từ chỗ sát khối, quay tại chỗ quẹt vào khối (bộ phát hiện kẹt báo đúng) | Vào trạm lỗi thì lùi thẳng 0.5 m trước |
+  | 9 | Báo "không tiến về đích 15 s" cả khi xe chạy bình thường | `distance_remaining` của `NavigateThroughPoses` không giảm đều (có lúc 0) | Tự tính khoảng cách thẳng từ `current_pose` (feedback) tới đích cuối |
+  | 10 | Lùi ra sau khi **đã hạ kệ** lỗi thì đơn bị trả về hàng đợi, xe quay lại nâng chính kệ đó | Quy tắc "chỉ trả đơn khi chưa chở" sai: sau khi hạ, xe không chở nhưng vẫn đang ở gầm kệ | Từ bước nâng kệ trở đi mọi lỗi thành sự cố chờ người; lùi ra lỗi thì lùi thẳng 1 m bằng `BackUp` |
+- **Kết quả** (tất cả sự cố gây ra trong lúc xe đang chở kệ tới trạm). Hai lần chạy cuối:
+
+  | Tình huống | Kết quả |
+  |---|---|
+  | Tường chắn ngang kho 75 s | lần f7: cảnh báo → sự cố `duong_bi_chan` → gỡ tường + "Đã xử lý" → đơn **xong** (155.7 s). Lần f10 (sau khi đổi cách đo tiến độ): cảnh báo, nhưng **chưa thành sự cố** trước khi gỡ tường (xe men theo tường về phía đích nên vẫn "tiến"), đơn xong — bài thử tính là **SAI** theo tiêu chí đặt trước |
+  | Dừng khẩn | xe đi thêm **0.0 cm** trong 3 s sau khi dừng; "Đã xử lý" → làm tiếp bước đang dở, đơn **xong** |
+  | Dịch kệ ra khỏi xe | phát hiện sau **1.7 s**, xe dừng, đơn lỗi, kệ "chưa rõ vị trí"; `shelf ke_02 N5` cập nhật đúng |
+  | Chạy đơn bình thường sau khi thêm xử lý sự cố | lần o8: **3/3** đơn xong (70–119 s), đơn gấp trước, đơn huỷ không chạy, kệ về ô lệch 5.0–9.7 cm |
+- **Chưa làm:** mất định vị (AMCL lạc) chưa phát hiện tự động; mất liên lạc với STM32 (sẽ do cầu nối UART + watchdog của firmware lo); pin cạn giữa đơn.
+- **Bài học:** "Nav2 không báo lỗi" không có nghĩa là xe đang tiến tới đích — phải đo tiến độ; và mọi quyết định khi xe đang mang hàng phải tính tới trạng thái vật lý (đang đội kệ), không chỉ trạng thái phần mềm.
+
 ---
 
 ## 5. Tổng hợp sai lầm và bài học
@@ -499,6 +534,8 @@ Các sự cố gặp phải, theo thứ tự:
 | Kiểm thử | Sửa workspace trong lúc loạt thử đang dùng nó | Làm việc khác trên nhánh / thư mục khác, hoặc chờ loạt thử xong |
 | Kiva | Làm trạm sạc thấp hơn lidar "để bản đồ khỏi đổi" | Vật cản thật phải thấy được bằng cảm biến; lập lại bản đồ |
 | Kiva | Chính sách pin chỉ so với ngưỡng | Tính cả phần pin cần cho việc sắp làm |
+| Kiva | Coi "Nav2 chưa báo lỗi" là xe đang tiến | Đo tiến độ về đích |
+| Kiva | Trả đơn về hàng đợi khi xe đang đội kệ | Quyết định theo trạng thái vật lý của xe |
 
 ## 6. Vấn đề còn mở
 Đã giải quyết (xem 4.6): AMCL lệch ở khu phía đông; "collision ahead" trong lối hẹp (từ 24 lần một chặng xuống 0–4 lần một nhiệm vụ).
@@ -510,7 +547,7 @@ Các sự cố gặp phải, theo thứ tự:
 5. **Node Python trong mô phỏng tốn CPU vì `/clock`:** đã giảm từ 38–75 % xuống 30–48 % mỗi node nhờ bước 3 ms (mục 4.8); vẫn còn vì `/clock` 333 tin/s. Chỉ có trong mô phỏng.
 6. **Dashboard chưa có đăng nhập:** chỉ mở trong LAN / Tailscale.
 7. **Nav2 thỉnh thoảng không khởi động xong:** container nạp node nhưng phản hồi dịch vụ `load_node` cho launch bị timeout, launch chờ mãi (1/10 lần chạy ngày 08/10). Chưa tìm nguyên nhân; khi gặp thì chạy lại.
-8. **Kiva:** lấy kệ đã chui theo chân kệ (lệch ngang ≤ 0.9 cm, mục 4.10) nhưng xe dừng quá tâm kệ 4–6 cm; trả kệ vẫn theo bản đồ. Đã có đơn hàng (mục 4.11), pin và tự sạc (mục 4.12); chưa xử lý sự cố tự động (giai đoạn 5).
+8. **Kiva:** lấy kệ đã chui theo chân kệ (lệch ngang ≤ 0.9 cm, mục 4.10) nhưng xe dừng quá tâm kệ 4–6 cm; trả kệ vẫn theo bản đồ. Đã có đơn hàng (mục 4.11), pin và tự sạc (mục 4.12), xử lý sự cố (mục 4.13); chưa phát hiện mất định vị.
 
 ## 7. Cách ghi tiếp tài liệu này
 Mỗi khi xong một phần việc hoặc sửa xong một sự cố, thêm vào mục tương ứng theo quy ước ở đầu file: mục tiêu, cách làm, sai lầm, nguyên nhân, cách sửa, kết quả có số liệu, bài học. Quy tắc này nằm trong skill `.claude/skills/report-log`.
