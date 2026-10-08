@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AGV Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">▲</span>
+      <h1>AGV Dashboard</h1>
+    </div>
+    <div class="pills">
+      <span class="pill" id="pill-web" title="Kết nối trình duyệt ↔ máy chạy dashboard"><i></i>Web</span>
+      <span class="pill" id="pill-link" title="mission_server có đang nhận lệnh không"><i></i>Mission</span>
+      <span class="pill" id="pill-nav" title="Nav2 đã active và AMCL đã định vị"><i></i>Nav2</span>
+    </div>
+    <div class="pose" id="pose">x — · y — · θ —</div>
+  </header>
+
+  <main class="layout">
+    <section class="map-wrap">
+      <canvas id="map" aria-label="Bản đồ kho"></canvas>
+      <div class="map-tools">
+        <button class="tool" id="btn-mode" title="Bấm bản đồ để đi tới điểm đó">⌖ Bấm để đi</button>
+        <button class="tool icon" id="btn-zoom-in" title="Phóng to">+</button>
+        <button class="tool icon" id="btn-zoom-out" title="Thu nhỏ">−</button>
+        <button class="tool icon" id="btn-fit" title="Vừa khung">⤢</button>
+      </div>
+      <div class="map-hint" id="map-hint">Đang chờ bản đồ…</div>
+      <div class="station-card" id="station-card" hidden>
+        <div>
+          <div class="sc-name" id="sc-name"></div>
+          <div class="sc-sub" id="sc-sub"></div>
+        </div>
+        <div class="sc-actions">
+          <button class="btn primary" id="sc-goto">Đi tới</button>
+          <button class="btn" id="sc-add">+ Chuỗi</button>
+          <button class="btn ghost icon" id="sc-close" aria-label="Đóng">✕</button>
+        </div>
+      </div>
+      <div class="legend" aria-label="Chú giải">
+        <span><i class="sw" style="background: var(--st-charge)"></i>Trạm sạc</span>
+        <span><i class="sw" style="background: var(--st-receive)"></i>Khu nhận hàng</span>
+        <span><i class="sw" style="background: var(--st-shelf)"></i>Kệ</span>
+        <span><i class="sw sq" style="background: var(--keepout)"></i>Vùng cấm (pallet thấp)</span>
+        <span><i class="sw sq" style="background: var(--robot); opacity: 1"></i>Xe</span>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <section class="card status-card">
+        <div class="status-head">
+          <div>
+            <div class="eyebrow">Nhiệm vụ hiện tại</div>
+            <div class="status-title" id="st-title">Rảnh</div>
+            <div class="status-sub" id="st-sub">Đang chờ lệnh</div>
+          </div>
+          <button class="btn danger big" id="btn-stop" disabled>DỪNG</button>
+        </div>
+        <div class="progress"><div class="bar" id="st-bar"></div></div>
+        <ol class="steps" id="st-steps"></ol>
+      </section>
+
+      <section class="card">
+        <h2>Nhiệm vụ định sẵn</h2>
+        <div class="missions" id="missions"></div>
+      </section>
+
+      <section class="card">
+        <h2>Tạo nhiệm vụ</h2>
+        <div class="builder-row">
+          <select id="b-station" aria-label="Vị trí"></select>
+          <select id="b-task" aria-label="Việc">
+            <option value="pick">Lấy hàng</option>
+            <option value="drop">Trả hàng</option>
+            <option value="charge">Sạc pin</option>
+            <option value="pass">Đi qua</option>
+          </select>
+          <input id="b-wait" type="number" min="0" max="600" step="1" value="3" aria-label="Chờ (giây)" title="Thời gian dừng tại chỗ (giây)">
+          <button class="btn" id="b-add">Thêm</button>
+        </div>
+        <ol class="draft" id="b-list"></ol>
+        <div class="builder-actions">
+          <button class="btn ghost" id="b-clear">Xoá hết</button>
+          <button class="btn primary" id="b-run" disabled>Chạy chuỗi</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Đi nhanh tới</h2>
+        <div class="quick" id="quick"></div>
+      </section>
+
+      <section class="card">
+        <h2>Nhật ký</h2>
+        <ul class="log" id="log"></ul>
+      </section>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
