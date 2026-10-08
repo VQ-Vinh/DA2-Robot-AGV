@@ -312,6 +312,21 @@ Kết quả (pin đầu 45 %, nhanh gấp 8, 3 đơn): 3/3 đơn xong; sau đơn
 
 Thử trong mô phỏng (3 đơn, 1 đơn gấp, 1 đơn huỷ, tự bấm xác nhận sau 3 s), 2 lần: mỗi lần **3/3 đơn xong, đơn huỷ không chạy, 0 lỗi**; đơn gấp chạy trước đơn thường tạo trước nó; 59–111 s mỗi đơn (TB 85 s); kệ về ô lệch 1.7–8.1 cm. Lần 2 có 2 chặng (1 lần chui gầm, 1 lần lùi ra) báo va chạm, thử lại thì qua.
 
+## Xử lý sự cố
+
+`order_manager` giám sát 5 Hz trong lúc chạy đơn:
+
+| Sự cố | Phát hiện | Xe làm gì | Người làm gì |
+|---|---|---|---|
+| Dừng khẩn | nút **DỪNG KHẨN** (`order estop`) | huỷ mọi action, vận tốc 0 | bấm **Đã xử lý** → xe làm tiếp đúng bước đang dở |
+| Đường bị chặn | Nav2 tự hồi phục (feedback `number_of_recoveries`) hoặc không tiến về đích > 15 s (`distance_remaining`) → cảnh báo vàng; > 60 s hoặc chặng lỗi hẳn → sự cố | dừng | dọn đường, **Đã xử lý** → đi tiếp |
+| Rơi kệ khi đang chở | mất tín hiệu "có kệ" > 1 s | dừng, đơn lỗi, kệ "chưa rõ vị trí" | đặt lại kệ, `order shelf <kệ> <ô>`, **Đã xử lý** |
+| Cơ cấu nâng lỗi | `/lift/state` = `error` | dừng | sửa, **Đã xử lý** |
+| Lỗi một bước khi đang chở kệ | bất kỳ | dừng (không bỏ đơn, không chạy lại từ đầu vì xe đang đội kệ) | **Đã xử lý** → làm lại bước đó |
+| Lỗi trước khi nâng kệ | bất kỳ | trả đơn về hàng đợi (tối đa 2 lần), làm đơn khác | — |
+
+Thử bằng gây sự cố có chủ ý trong mô phỏng (`agv_gazebo/scripts/fault_test.py`, chạy cùng `sim.launch.py nav:=true`): 3 tình huống (tường chắn ngang kho 75 s khi đang chở kệ; DỪNG KHẨN khi đang chở; dịch kệ ra khỏi xe khi đang chở): lần f7 **3/3 đạt** — cảnh báo rồi sự cố `duong_bi_chan`, gỡ tường + Đã xử lý → đơn xong; lần f10 2/3 (tường: có cảnh báo, đơn xong sau khi gỡ, nhưng chưa thành sự cố trong 75 s vì xe men theo tường về phía đích nên vẫn được tính là tiến); dừng khẩn xe đứng yên (0.0 cm trong 3 s) rồi làm tiếp, đơn xong; rơi kệ phát hiện sau 1.7 s, đơn lỗi, kệ chưa rõ vị trí → `shelf ke_02 N5` cập nhật đúng.
+
 ## Nhiệm vụ kho: `agv_mission`
 
 ```
