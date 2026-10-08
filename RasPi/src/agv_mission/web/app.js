@@ -22,6 +22,8 @@ let view = null;           // {s, ox, oy}: pixel man hinh moi o ban do, vi tri g
 let gotoMode = false;
 let selected = null;       // ten vi tri dang chon
 let draft = loadDraft();
+let orders = null;         // trang thai order_manager (/order/state)
+let lastOrdersText = '';
 let keepout = null;        // mat na vung cam (cac o ke mini), cung dang voi map
 const loading = {};        // lop dang tai: {map: true, keepout: true}
 let colors = {};
@@ -44,7 +46,7 @@ function readColors() {
   colors = {
     free: rgb(css('--map-free')), occ: rgb(css('--map-occ')), unknown: rgb(css('--map-unknown')),
     path: css('--path'), robot: css('--robot'), text: css('--text'), surface: css('--surface'),
-    accent: css('--accent'), keepout: rgb(css('--keepout')),
+    accent: css('--accent'), keepout: rgb(css('--keepout')), shelf: css('--shelf'),
   };
   for (const [k, v] of Object.entries(KIND_VAR)) colors[k] = css(v);
 }
@@ -269,6 +271,8 @@ function draw() {
     ctx.setLineDash([]);
   }
 
+  drawShelves();
+
   // Cac vi tri
   const fontPx = Math.round(Math.min(Math.max(metersToPx(0.22), 10), 14));
   ctx.font = `600 ${fontPx}px system-ui, sans-serif`;
@@ -318,6 +322,95 @@ function draw() {
     ctx.restore();
   }
 }
+
+// Ke mini: hinh vuong tai o dang dau; ke dang duoc cho thi ve theo xe
+function drawShelves() {
+  if (!orders || !orders.shelves) return;
+  const cur = orders.orders && orders.orders.find((o) => o.id === orders.current);
+  const size = 0.75;
+  for (const [name, slot] of Object.entries(orders.shelves)) {
+    const carried = cur && cur.shelf === name && orders.carrying && live.pose;
+    const sl = orders.slots && orders.slots[slot];
+    if (!sl && !carried) continue;
+    const x = carried ? live.pose.x : sl.x;
+    const y = carried ? live.pose.y : sl.y;
+    const yaw = carried ? live.pose.yaw : sl.yaw;
+    const [sx, sy] = toScreen(x, y);
+    const h = metersToPx(size) / 2;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(-yaw);
+    ctx.fillStyle = colors.shelf;
+    ctx.globalAlpha = carried ? 0.55 : 0.35;
+    ctx.fillRect(-h, -h, 2 * h, 2 * h);
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = cur && cur.shelf === name ? 3 : 1.5;
+    ctx.strokeStyle = colors.shelf;
+    ctx.strokeRect(-h, -h, 2 * h, 2 * h);
+    ctx.restore();
+    ctx.font = `600 ${Math.round(Math.min(Math.max(metersToPx(0.18), 9), 12))}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = colors.text;
+    ctx.fillText(name.replace('ke_', 'K'), sx, sy);
+  }
+}
+
+// ---------- don hang ----------
+const ORDER_STATUS = { pending: 'Chờ', running: 'Đang chạy', done: 'Xong', failed: 'Lỗi', cancelled: 'Đã huỷ' };
+
+function fmtTime(t) {
+  return t ? new Date(t * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '';
+}
+
+function renderOrders() {
+  const o = orders;
+  if (!o) return;
+  // Chon ke / tram: chi dung lai khi danh sach doi (giu lua chon cua nguoi dung)
+  const shelfSel = $('#o-shelf');
+  const names = Object.keys(o.shelves || {}).sort();
+  if (shelfSel.options.length !== names.length) {
+    shelfSel.replaceChildren(...names.map((n) => el('option', { value: n }, `${n} (ô ${o.shelves[n]})`)));
+  }
+  const stSel = $('#o-station');
+  const picks = Object.entries(cfg.stations).filter(([, st]) => st.kind === 'pick');
+  if (stSel.options.length !== picks.length) {
+    stSel.replaceChildren(...picks.map(([n, st]) => el('option', { value: n }, st.label || n)));
+  }
+
+  $('#o-pause').textContent = o.paused ? 'Tiếp tục' : 'Tạm dừng';
+  $('#o-error').hidden = !o.error;
+  $('#o-error-text').textContent = o.error ? `Xe dừng: ${o.error}` : '';
+  const cur = o.orders.find((x) => x.id === o.current);
+  $('#o-current').replaceChildren(cur
+    ? el('span', {}, el('b', {}, `#${cur.id} ${cur.shelf} → ${label(cur.station)}`), ` — ${o.step_label || ''}`)
+    : (o.paused ? 'Đang tạm dừng nhận đơn' : 'Không có đơn đang chạy'));
+  $('#o-confirm').hidden = o.step !== 'wait_confirm';
+
+  $('#o-queue').replaceChildren(...o.queue.map((q) => el('li', {},
+    el('span', { class: 'o-id' }, `#${q.id}`),
+    el('span', { class: 'o-text' }, `${q.shelf} → ${label(q.station)}`),
+    ...(q.priority > 0 ? [el('span', { class: 'badge prio' }, 'Gấp')] : []),
+    el('button', { title: 'Huỷ đơn', 'aria-label': 'Huỷ đơn', onclick: () => send(`order cancel ${q.id}`, false) }, '✕'),
+  )));
+  const hist = o.orders.filter((x) => x.status !== 'pending' && x.status !== 'running').reverse().slice(0, 8);
+  $('#o-history').replaceChildren(...hist.map((h) => el('li', { title: h.error || '' },
+    el('span', { class: 'o-id' }, `#${h.id}`),
+    el('span', { class: 'o-text' }, `${h.shelf} → ${label(h.station)}`
+      + (h.status === 'done' && h.started ? ` · ${Math.round(h.finished - h.started)} s` : '')
+      + (h.error ? ` · ${h.error}` : '')),
+    el('span', { class: `badge ${h.status}` }, ORDER_STATUS[h.status] || h.status),
+    el('span', { class: 'o-id' }, fmtTime(h.finished)),
+  )));
+  const s = o.stats || {};
+  $('#o-stats').textContent = s.done ? `Đã xong ${s.done} đơn, trung bình ${s.avg_s} s/đơn` : '';
+}
+
+$('#o-add').addEventListener('click', () =>
+  send(`order add ${$('#o-shelf').value} ${$('#o-station').value} ${$('#o-prio').value}`, false));
+$('#o-confirm').addEventListener('click', () => send('order confirm', false));
+$('#o-ack').addEventListener('click', () => send('order ack', false));
+$('#o-pause').addEventListener('click', () => send(orders && orders.paused ? 'order resume' : 'order pause', false));
 
 // ---------- tuong tac ban do ----------
 function stationAt(sx, sy) {
@@ -579,6 +672,12 @@ function connect() {
       lastStateText = st;
       live.state = d.state;
       renderStatus();
+    }
+    const ot = JSON.stringify(d.orders);
+    if (ot !== lastOrdersText) {
+      lastOrdersText = ot;
+      orders = d.orders;
+      renderOrders();
     }
     const g = d.grids || {};
     if (g.map && (!map || map.version !== g.map)) loadGrid('map');

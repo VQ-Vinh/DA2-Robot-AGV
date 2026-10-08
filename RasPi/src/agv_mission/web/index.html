@@ -47,6 +47,7 @@
         <span><i class="sw" style="background: var(--st-inbound)"></i>Khu nhập hàng</span>
         <span><i class="sw" style="background: var(--st-waypoint)"></i>Điểm trên lối</span>
         <span><i class="sw sq" style="background: var(--keepout)"></i>Ô kệ (vùng cấm)</span>
+        <span><i class="sw sq" style="background: var(--shelf); opacity: 1"></i>Kệ</span>
         <span><i class="sw sq" style="background: var(--robot); opacity: 1"></i>Xe</span>
       </div>
     </section>
@@ -63,6 +64,33 @@
         </div>
         <div class="progress"><div class="bar" id="st-bar"></div></div>
         <ol class="steps" id="st-steps"></ol>
+      </section>
+
+      <section class="card order-card">
+        <div class="order-head">
+          <h2>Đơn hàng</h2>
+          <button class="btn ghost" id="o-pause" title="Tạm dừng / tiếp tục nhận đơn mới">Tạm dừng</button>
+        </div>
+        <div class="alert" id="o-error" hidden>
+          <span id="o-error-text"></span>
+          <button class="btn danger" id="o-ack">Đã xử lý</button>
+        </div>
+        <div class="o-current" id="o-current">Không có đơn đang chạy</div>
+        <button class="btn primary big wide" id="o-confirm" hidden>Đã lấy hàng xong — trả kệ</button>
+        <div class="o-form">
+          <select id="o-shelf" aria-label="Kệ"></select>
+          <select id="o-station" aria-label="Trạm"></select>
+          <select id="o-prio" aria-label="Ưu tiên">
+            <option value="0">Thường</option>
+            <option value="1">Gấp</option>
+          </select>
+          <button class="btn primary" id="o-add">Tạo đơn</button>
+        </div>
+        <h3>Hàng đợi</h3>
+        <ol class="o-list" id="o-queue"></ol>
+        <h3>Gần đây</h3>
+        <ol class="o-list" id="o-history"></ol>
+        <div class="o-stats" id="o-stats"></div>
       </section>
 
       <section class="card">
