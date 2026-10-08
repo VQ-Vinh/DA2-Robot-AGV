@@ -286,6 +286,7 @@ Các sự cố gặp phải, theo thứ tự:
   | 3 | Đọc mã thấy file web sẽ bị trả 404 khi build `--symlink-install` | `realpath` đi theo symlink ra ngoài thư mục web, nên phép kiểm tra chống `..` chặn luôn file hợp lệ | Dùng `abspath`: vẫn chặn `..`, giữ symlink; kiểm lại bằng `curl` đường dẫn `../../etc/passwd` → 404 |
   | 4 | Node dashboard tốn **82 % CPU** | So sánh: `mission_server` cũng tốn 77 %; một node rclpy **rỗng** bật `use_sim_time` tốn 53 %. Nguyên nhân là `/clock` của Gazebo (bước vật lý 1 ms, khoảng 1000 tin/giây), rclpy phải xử lý từng tin | Dashboard chỉ cần TF mới nhất nên bỏ `use_sim_time` → **8 %** (2 trình duyệt mở). Trên Pi không có `/clock` |
   | 5 | Khởi động lại node dashboard thì nhật ký trên trang bị lặp; bản sửa đầu tiên lại làm nhật ký trống | Id dòng nhật ký đếm lại từ đầu. Bản sửa đầu so `after > log_id`, nhưng node mới nhận đúng 10 dòng (giữ lại trên topic) nên `after = 10` không lớn hơn → không gửi gì | Server có mã phiên (`boot`), trình duyệt gửi kèm khi kết nối lại; khác phiên thì xoá và nhận lại toàn bộ |
+  | 6 | Người làm đồ án thấy bản đồ trên web thiếu 2 pallet mà RViz có | Pallet cao 0.15 m, thấp hơn mặt quét lidar (0.17 m), nên không có trong `/map`; RViz vẽ chúng từ mặt nạ vùng cấm `/keepout_filter_mask` (bước 4), còn dashboard chỉ đọc `/map` | Dashboard đọc thêm mặt nạ, vẽ thành lớp đỏ trong suốt theo gốc tọa độ riêng của mặt nạ, thêm chú giải |
 
 - **Kết quả** (mô phỏng headless, bấm nút trên dashboard, xem trên browser pane):
   - `giao_hang` 3/3 chặng, 66.0 s.
