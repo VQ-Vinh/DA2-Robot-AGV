@@ -8,7 +8,7 @@ Hai cach ra lenh:
        goto_xy x y [yaw] di toi mot diem bat ky tren ban do (m, rad, frame map)
        run <nhiem_vu>    chay nhiem vu dinh san
        seq <buoc> ...    chay chuoi buoc tu tao, moi buoc = vi_tri[:task[:wait_s]]
-                         vd: seq ke_A1:pick ke_C2:pick:5 khu_nhan_hang:drop tram_sac:charge
+                         vd: seq khu_nhap_hang:pick tram_lay_hang:drop:5 tram_sac:charge
        cancel            dung lai
        list              liet ke vi tri va nhiem vu
        status            viec dang lam
@@ -43,7 +43,8 @@ from visualization_msgs.msg import Marker, MarkerArray
 
 TASK_NAME = {'pick': 'lay hang', 'drop': 'tra hang', 'charge': 'sac pin', 'pass': 'di qua'}
 DEFAULT_WAIT = {'pick': 3.0, 'drop': 3.0, 'charge': 0.0, 'pass': 0.0}
-KIND_COLOR = {'charge': (0.1, 0.8, 0.2), 'receive': (1.0, 0.55, 0.0), 'shelf': (0.2, 0.5, 1.0)}
+KIND_COLOR = {'charge': (0.1, 0.8, 0.2), 'pick': (1.0, 0.55, 0.0), 'inbound': (0.2, 0.5, 1.0),
+              'waypoint': (0.6, 0.6, 0.6)}
 
 
 class MissionServer(Node):
@@ -342,13 +343,13 @@ class MissionServer(Node):
     def publish_markers(self):
         arr = MarkerArray()
         for i, (name, s) in enumerate(self.stations.items()):
-            r, g, b = KIND_COLOR.get(s.get('kind', 'shelf'), (0.7, 0.7, 0.7))
+            r, g, b = KIND_COLOR.get(s.get('kind', 'waypoint'), (0.7, 0.7, 0.7))
             disc = Marker()
             disc.header.frame_id = 'map'
             disc.ns, disc.id, disc.type = 'station', i, Marker.CYLINDER
             disc.pose.position.x, disc.pose.position.y, disc.pose.position.z = float(s['x']), float(s['y']), 0.01
             disc.pose.orientation.w = 1.0
-            disc.scale.x = disc.scale.y = 0.5 if s.get('kind') != 'shelf' else 0.3
+            disc.scale.x = disc.scale.y = 0.5 if s.get('kind') != 'waypoint' else 0.25
             disc.scale.z = 0.02
             disc.color.r, disc.color.g, disc.color.b, disc.color.a = r, g, b, 0.7
             text = Marker()

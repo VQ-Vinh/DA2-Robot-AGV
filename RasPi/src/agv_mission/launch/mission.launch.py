@@ -1,8 +1,8 @@
 """Node dieu phoi nhiem vu kho (chay cung Nav2).
 
   ros2 launch agv_mission mission.launch.py                          # xe that, cho lenh
-  ros2 launch agv_mission mission.launch.py mission:=giao_hang       # chay ngay mot nhiem vu
-  ros2 launch agv_gazebo sim.launch.py nav:=true mission:=giao_hang  # mo phong (tu goi file nay)
+  ros2 launch agv_mission mission.launch.py mission:=tuan_tra        # chay ngay mot nhiem vu
+  ros2 launch agv_gazebo sim.launch.py nav:=true mission:=tuan_tra   # mo phong (tu goi file nay)
 
 Web dashboard bat mac dinh: http://<may chay>:8080  (dashboard:=false de tat, port:=... de doi cong).
 

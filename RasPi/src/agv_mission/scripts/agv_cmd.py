@@ -2,8 +2,8 @@
 """Go lenh cho xe tu terminal, gui toi mission_server va in phan hoi.
 
   ros2 run agv_mission agv_cmd.py list               # xem vi tri va nhiem vu
-  ros2 run agv_mission agv_cmd.py goto ke_C2         # di toi mot vi tri
-  ros2 run agv_mission agv_cmd.py run giao_hang      # chay nhiem vu dinh san
+  ros2 run agv_mission agv_cmd.py goto tram_lay_hang # di toi mot vi tri
+  ros2 run agv_mission agv_cmd.py run tuan_tra       # chay nhiem vu dinh san
   ros2 run agv_mission agv_cmd.py cancel             # dung lai
   ros2 run agv_mission agv_cmd.py status
   ros2 run agv_mission agv_cmd.py watch              # chi theo doi trang thai (Ctrl+C de thoat)

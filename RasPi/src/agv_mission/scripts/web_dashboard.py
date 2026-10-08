@@ -8,10 +8,10 @@ Trinh duyet khong noi chuyen voi ROS/DDS: node nay dung giua, chi dung thu vien 
   GET  /                 file tinh trong share/agv_mission/web
   GET  /api/config       vi tri (stations.yaml) va nhiem vu (missions.yaml)
   GET  /api/map          ban do /map: kich thuoc, do phan giai, goc, o ban do (base64), version
-  GET  /api/keepout      mat na vung cam /keepout_filter_mask (pallet thap lidar khong thay), cung dang
+  GET  /api/keepout      mat na vung cam /keepout_filter_mask (cac o ke mini), cung dang
   GET  /api/events       (?after=<id nhat ky cuoi>&boot=<ma phien>) Server-Sent Events ~5 Hz: version cac lop ban do, vi tri xe, trang thai nhiem vu, duong di Nav2,
                          dong nhat ky moi, ket noi toi mission_server
-  POST /api/command      {"cmd": "run giao_hang"} -> /mission/command (chi nhan cac lenh trong ALLOWED)
+  POST /api/command      {"cmd": "run tuan_tra"} -> /mission/command (chi nhan cac lenh trong ALLOWED)
 
 Chua co dang nhap: chi mo trong LAN / Tailscale.
 """
