@@ -260,6 +260,18 @@ ros2 run agv_gazebo shelf_transport_test.py --ros-args -p shelf:=ke_03 -p statio
 ros2 run agv_gazebo shelf_transport_test.py --ros-args -p shelf:=ke_03 -p shelf_offset:="[0.08, -0.06, 4.0]" -p detect:=false
 ```
 
+So sánh khi kệ bị dời lệch như sau nhiều lần trả kệ: (+8, −6 cm, 4°), (−7, +5 cm, −5°), (+10, 0 cm, 0°), mỗi kiểu thử `ke_03` và `ke_06` (vùng chết 100 RPM):
+
+| | Chui theo chân kệ (`shelf_dock`) | Chui theo ô trên bản đồ (`slot_dock`) |
+|---|---|---|
+| Chui gầm lấy kệ thành công | **6/6** | 2/6 |
+| Chu trình trọn vẹn (10 bước) | **6/6** | 2/6 |
+| Lệch ngang so với kệ thật | **0.0–0.9 cm** | 1.6–10.9 cm |
+| Lệch góc so với kệ thật | 0.4–1.9° | 1.6–34.6° |
+| Lệch dọc so với tâm kệ (xe dừng quá) | 3.8–6.1 cm | 3.1–3.9 cm (2 lần chui được) |
+
+Theo bản đồ thì xe vào đúng ô nhưng lệch kệ thật, docking dự báo quẹt chân kệ và bỏ cuộc. Còn lại: xe luôn dừng quá tâm kệ ~4–6 cm (đi ≥ 0.34 m/s vì vùng chết), nên kệ nằm lệch tâm mặt nâng chừng đó.
+
 Kết quả (6 lần mỗi cấu hình, 3 kệ ở 2 dãy: `ke_01`, `ke_03`, `ke_06`, mỗi lần 10 bước):
 
 | | Vùng chết 100 RPM (firmware hiện tại) | 50 RPM (nếu cải thiện tốc độ thấp) |
