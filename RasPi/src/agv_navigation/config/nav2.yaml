@@ -161,7 +161,7 @@ local_costmap:
       height: 3
       resolution: 0.05
       # AGV: hinh chu nhat cua xe (mica 0.30 m + banh ra ngoai, rong 0.37 m) + 1 cm. Khi cho ke
-      # mini, payload_manager.py gui footprint cua ke (0.84 x 0.84 m) len topic footprint.
+      # mini, payload_manager.py gui footprint cua ke (0.88 x 0.78 m) len topic footprint.
       footprint: "[[0.16, 0.19], [0.16, -0.19], [-0.16, -0.19], [-0.16, 0.19]]"
       plugins: ["voxel_layer", "inflation_layer"]
       # AGV: KHONG dung vung cam o local costmap. Vung cam (o ke mini) chi o global costmap de
@@ -205,7 +205,7 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       # AGV: hinh chu nhat cua xe (mica 0.30 m + banh ra ngoai, rong 0.37 m) + 1 cm. Khi cho ke
-      # mini, payload_manager.py gui footprint cua ke (0.84 x 0.84 m) len topic footprint.
+      # mini, payload_manager.py gui footprint cua ke (0.88 x 0.78 m) len topic footprint.
       footprint: "[[0.16, 0.19], [0.16, -0.19], [-0.16, -0.19], [-0.16, 0.19]]"
       resolution: 0.05
       track_unknown_space: true

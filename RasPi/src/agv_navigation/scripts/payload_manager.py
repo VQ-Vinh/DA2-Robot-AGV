@@ -6,7 +6,7 @@ Doc trang thai co cau nang (/lift/state, /lift/has_load) va:
      khi dang cho ke thi bo ca diem trong khung ke (4 chan ke di theo xe, khong phai vat can).
      Giong LaserScanBoxFilter cua laser_filters (diem bi loc = NaN, AMCL / SLAM / costmap bo qua),
      nhung doi khung loc theo tai nen tu viet.
-  2. Doi footprint cua 2 costmap: xe 0.32 x 0.38 m <-> ke 0.84 x 0.84 m (ke 0.75 m + lech tren mat nang).
+  2. Doi footprint cua 2 costmap: xe 0.32 x 0.38 m <-> ke 0.88 (doc) x 0.78 (ngang) m.
   3. Gioi han toc do Nav2 khi cho ke (/speed_limit).
   4. Khi mat nang da len het ("up"): xoa 2 costmap. Luc mat nang con ha, lidar da danh dau 4 chan
      ke vao costmap; sau khi nang, diem chan ke bi loc (NaN) nen khong tia nao xoa duoc -> "chan ke
@@ -42,7 +42,10 @@ class PayloadManager(Node):
         # mat nang toi ~8 cm (AMCL lech khi chui gam) -> 0.375 + 0.1 (0.41 da thu: chan ke lot ra)
         self.shelf = self.declare_parameter('shelf_half', [0.48, 0.48]).value
         self.robot_fp = self.declare_parameter('robot_footprint_half', [0.16, 0.19]).value
-        self.shelf_fp = self.declare_parameter('shelf_footprint_half', [0.42, 0.42]).value
+        # Footprint khi cho (nua doc, nua ngang): ke 0.75 m; nhan dien chan ke cho lech ngang <= 1 cm nhung
+        # xe dung qua tam ke 4-6 cm theo chieu doc (REPORT.md 4.10) -> doc 0.375 + 0.065, ngang 0.375 + 0.015.
+        # Vuong 0.42 x 0.42 truoc day lam khe toi ke ben canh khi tra ke chi con ~17 cm (REPORT.md 4.13).
+        self.shelf_fp = self.declare_parameter('shelf_footprint_half', [0.44, 0.39]).value
         self.carry_speed = self.declare_parameter('carry_speed', 0.35).value   # m/s
 
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
