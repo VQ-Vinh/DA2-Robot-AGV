@@ -66,6 +66,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 08/10/2026 | Kho Kiva, giai đoạn 3: quản lý đơn hàng | #15 |
 | 08/10/2026 | Kho Kiva, giai đoạn 4: pin và tự về sạc | #16 |
 | 08/10/2026 | Kho Kiva, giai đoạn 5: xử lý sự cố | #17 |
+| 09/10/2026 | Xe vòng vòng / trả kệ lệch: vùng chết động cơ, kiểm tra tư thế, khoá kệ | #17 |
 
 ---
 
@@ -508,6 +509,57 @@ Các sự cố gặp phải, theo thứ tự:
 - **Chưa làm:** mất định vị (AMCL lạc) chưa phát hiện tự động; mất liên lạc với STM32 (sẽ do cầu nối UART + watchdog của firmware lo); pin cạn giữa đơn.
 - **Bài học:** "Nav2 không báo lỗi" không có nghĩa là xe đang tiến tới đích — phải đo tiến độ; và mọi quyết định khi xe đang mang hàng phải tính tới trạng thái vật lý (đang đội kệ), không chỉ trạng thái phần mềm.
 
+### 4.14. Xe "vòng vòng", trả kệ lệch 50°: vùng chết động cơ (PR #17)
+- **Phát hiện:** người dùng chạy mô phỏng có GUI và thấy hai chuyện. (1) Một đơn dừng với sự cố "lùi ra thất bại (xe còn ở gầm ke_05)": theo Gazebo, kệ nằm trong ô S1 nhưng **xoay 37°**, còn xe lệch hướng 50° so với trục ô và cách kệ 0.53 m. (2) Nhiều lúc xe "quyết định không dứt khoát", quay vòng vòng.
+- **Cách tìm nguyên nhân:**
+  - Log `docking_server` của lần (1): khi trả kệ, docking báo "Collision detected" 2 lần, mỗi lần quay về staging rồi vào lại; lần 3 thì "Docking was successful". Bộ docking chỉ kiểm **khoảng cách** tới tâm ô (`docking_threshold`), không kiểm hướng. Vì vậy xe tới tâm ô khi đang lệch 50° vẫn được tính là xong, `order_manager` hạ kệ luôn. Sau đó xe lùi ra theo hướng lệch, đi chéo về phía đông bắc và chạm chân kệ ô S2 ("Collision Ahead").
+  - Viết bài thử mới `agv_gazebo/scripts/motion_test.py`. Bài thử chạy 8 đơn liên tiếp, ghi vị trí thật (`/ground_truth`) 20 Hz theo từng bước của đơn. Mỗi bước tính: tổng góc quay, **góc quay thừa** (tổng trừ góc thực sự cần quay), số lần đảo chiều quay, và tư thế xe ngay trước khi hạ kệ.
+  - Chạy cùng một code hai lần: có vùng chết động cơ (như xe thật) và tắt vùng chết (`rpm_min:=0`).
+
+  | Góc quay thừa (TB / lớn nhất) | Có vùng chết (m1) | Tắt vùng chết (m2) |
+  |---|---|---|
+  | Chui gầm lấy kệ | 627° / **4261°** | 4° / 8° |
+  | Trả kệ vào ô | 762° / **4198°** | 0° / 1° |
+  | Tới staging | 293° / 454° | 227° / 246° |
+  | Từ trạm về staging (đang chở) | 519° / 821° | 188° / 201° |
+
+  Vùng chết của động cơ là nguyên nhân chính. Firmware ép mọi lệnh khác 0 lên ≥ 100 RPM, nên xe không đi chậm hơn 0.34 m/s và không quay chậm hơn 1.5 rad/s (mục 4.9). Đọc quỹ đạo từng bước thì có **ba cơ chế** riêng:
+  1. **Quay tròn tại staging khi docking thử lại.** Mỗi lần thử lại, docking lùi xe về staging. Nó chỉ dừng khi xe vừa nằm trong 5 cm vừa đúng hướng trong 6° (`undock_linear/angular_tolerance` 0.05 / 0.1). Với bước quay tối thiểu 1.5 rad/s thì gần như không đạt được: xe quay hết vòng này tới vòng khác 8–15 s mỗi lần (đơn #2 lần m1: 60 s, quay 4270°, 29 lần đảo chiều).
+  2. **Vọt lố sau mỗi lần quay tại chỗ.** Lệnh quay đi qua `velocity_smoother`, bộ này hạ lệnh dừng từ từ (3.2 rad/s²). Mọi giá trị khác 0 trên đường hạ đều bị vùng chết đẩy lại lên 1.5 rad/s, nên xe quay hết tốc cho tới khi lệnh về đúng 0. Đo: mỗi lệnh Spin quay thừa khoảng 30–80°.
+  3. **Đi vòng tròn quanh đường gần đích.** Regulated Pure Pursuit giảm tốc khi gần đích, xuống tới 0.05 m/s (`min_approach_linear_velocity`). Khâu giữ bán kính cua (`motor_model`, mục 4.9) đẩy cả hai bánh lên cùng tỉ lệ cho tới khi bánh chậm nhất đạt 100 RPM. Vì vậy lệnh "0.05 m/s + bẻ lái nhẹ" thành 0.34 m/s và tốc độ bẻ lái gấp 7 lần: vòng điều khiển (có trễ) vọt lố, xe đi vòng tròn quanh điểm đích.
+  - **Đoán sai trong lúc tìm:**
+    - (a) Nghĩ kệ trượt trên mặt nâng khi xe quay nhanh. Lần đo đầu cho "kệ lệch so với xe 40 cm, 42°", nhưng đó là do lệnh `gz model` mất khoảng 1 s nên lấy vị trí kệ và xe ở hai thời điểm khác nhau. Đo lại lúc xe đứng yên ở trạm: kệ lệch 4–10 cm, xoay tới 11–23° so với xe. Phần lớn là do lúc chui gầm xe đã lệch, nhưng có ít nhất một lần kệ bị coi là rơi khi đang lùi (lần m3).
+    - (b) Nghĩ cách "dừng, quay tại chỗ cho thẳng trục ô, rồi đi thẳng" (kiểu Kiva) sẽ dứt khoát hơn. Thực tế bộ quay tại chỗ không thể chỉnh góc nhỏ: xin quay 3° thì xe quay 40°, xin 11° thì quay 36° (lần s2, sau khi đã sửa smoother). Xe lắc qua lắc lại 8–12 lần rồi báo lỗi. Bỏ phương án này và phương án đi thẳng vào ô bằng `DriveOnHeading` (cần quay chỉnh chính xác trước).
+    - (c) Đặt tốc độ docking bằng tốc độ thật (0.35 m/s) để bộ điều khiển "biết" xe chạy nhanh thế nào. Kết quả: quỹ đạo dự báo cua rộng hơn và quét chân kệ, docking báo va chạm 4/4 lần, xe kẹt sát chân kệ, planner không lập được đường (lần m4). Trả về 0.15.
+- **Cách sửa (giữ):**
+  - `nav2.yaml`:
+    - `undock_linear/angular_tolerance` 0.10 m / 0.3 rad, để docking khi thử lại không phải quay tròn tìm đúng hướng.
+    - `velocity_smoother` gần như bỏ giới hạn gia tốc (5 m/s², 20 rad/s²). Giới hạn thật đã do động cơ (DiffDrive 1 m/s², 3 rad/s²) đảm nhận.
+    - RPP không bao giờ xin chậm hơn mức bánh chạy được: `min_approach_linear_velocity` và `regulated_linear_scaling_min_speed` 0.35, `rotate_to_heading_angular_vel` 1.5.
+    - `behavior_server` 20 Hz.
+  - `order_manager.checked_dock()`: sau khi chui gầm (trước khi nâng) và sau khi trả kệ (trước khi hạ), lấy tư thế xe từ TF `map → base_link` và so với trục ô. Nếu lệch hướng > 8°, hoặc khi trả kệ lệch vị trí > 10 cm, thì lùi thẳng ra staging rồi vào lại, tối đa 3 lần. Lệch > 40° thì quay tại chỗ bớt trước khi lùi (xin bớt 30° vì phần quay thừa). Ở giữa ô quay vẫn an toàn: nửa đường chéo kệ 0.53 m, chân kệ ô bên cạnh cách tâm ô ≥ 0.82 m.
+  - Mô phỏng: khi nâng hết thì khoá kệ vào mặt nâng bằng khớp cố định (plugin `DetachableJoint` sinh trong mỗi kệ của world), hạ kệ thì mở khoá trước. Việc này tương ứng với chốt định vị trên mặt nâng của xe thật. Khi chỉ nhờ ma sát, chân kệ có thể lọt ra ngoài vùng lọc scan và thành "vật cản" sát xe. Plugin tự nối khớp mọi kệ với xe lúc mô phỏng bắt đầu, nên `lift_sim` mở khoá hết khi thấy xe. Lần đầu mở khoá lần lượt 8 kệ × 2 lần mất 16 s: xe đã nhận đơn và chạy khi vài kệ còn dính vào xe (lần s1), nên đổi sang gọi song song.
+- **Sai lầm của công cụ thử:**
+  - Một lần chạy bị hỏng vì `motion_test.py` của lần trước vẫn chạy: script dọn dẹp không giết nó, nên mỗi đơn được thêm 2 lần. Đã thêm vào script dọn dẹp.
+  - Một lần sửa script bằng chuỗi có `\n` sinh ra lỗi cú pháp làm hỏng một lần chạy.
+- **Kết quả** (8 đơn liên tiếp, có vùng chết; m1 = trước, m7 = sau khi sửa):
+
+  | | m1 | m7 |
+  |---|---|---|
+  | Đơn xong | 8/8 | 8/8 |
+  | Thời gian TB / đơn | 105 s (87–146) | 88 s (63–103) |
+  | Nav2 tự hồi phục | 6 lần ở đơn #2, 4 lần ở #8… | 0 |
+  | Quay thừa khi chui gầm (TB / max) | 627° / 4261° | 168° / 1251° |
+  | Quay thừa khi trả kệ (TB / max) | 762° / 4198° | 28° / 75° |
+  | Quay thừa trạm → staging (TB / max) | 519° / 821° | 228° / 390° |
+  | Lệch hướng xe khi trả kệ (max, vị trí thật) | 3.2° | 4.1° |
+  | Kệ sau đơn: lệch tâm / xoay (max) | 8.6 cm / 10.1° | 8.7 cm / 5.5° |
+
+  - Kiểm tra tư thế đã bắt được một lần chui gầm lệch (ô N1) và vào lại đạt ở lần 2. Lần m5 (trước khi bỏ phương án (b)) tái hiện đúng lỗi của người dùng: docking trả kệ báo xong khi xe lệch +49°, và bước kiểm tra đã chặn không cho hạ kệ.
+  - Bài thử sự cố chạy lại sau khi sửa (f11): **3/3 đạt**. Kịch bản "rơi kệ" giờ phải mở khoá trước, như khi chốt định vị bị gãy.
+- **Còn lại:** tới staging vẫn quay thừa khoảng 300° (TB) vì đường đi qua điểm trước staging có góc gấp. Một lần chui gầm vẫn quay thừa 1251° (lần thử lại của docking). Gốc rễ là vùng chết, cách sửa thật nằm ở firmware (mục 6).
+- **Bài học:** khi bộ chấp hành có vùng chết, mọi khâu "lệnh nhỏ dần về 0" (giảm tốc gần đích, làm mượt vận tốc, dung sai hẹp) đều biến thành vọt lố. Phải đo quỹ đạo thật theo từng bước thay vì chỉ nhìn đơn có xong không, vì 8/8 đơn xong vẫn che được một bước quay 4000°.
+
 ---
 
 ## 5. Tổng hợp sai lầm và bài học
@@ -538,13 +590,16 @@ Các sự cố gặp phải, theo thứ tự:
 | Kiva | Chính sách pin chỉ so với ngưỡng | Tính cả phần pin cần cho việc sắp làm |
 | Kiva | Coi "Nav2 chưa báo lỗi" là xe đang tiến | Đo tiến độ về đích |
 | Kiva | Trả đơn về hàng đợi khi xe đang đội kệ | Quyết định theo trạng thái vật lý của xe |
+| Kiva | Tin "Docking was successful" là xe đã vào đúng ô | Tự kiểm tra tư thế trước khi nâng / hạ |
+| Kiva | Chỉ nhìn số đơn xong, không đo quỹ đạo | Đo góc quay thừa từng bước (8/8 đơn xong vẫn có bước quay 4000°) |
+| Kiva | Giải quyết vùng chết bằng quay tại chỗ chính xác | Đo trước: một lần Spin quay thừa ~30 deg, chỉ chỉnh được khi đang đi |
 
 ## 6. Vấn đề còn mở
 Đã giải quyết (xem 4.6): AMCL lệch ở khu phía đông; "collision ahead" trong lối hẹp (từ 24 lần một chặng xuống 0–4 lần một nhiệm vụ).
 
 1. **Hệ thống đôi khi khựng khoảng 1 s** khi máy tải nặng (vòng điều khiển tụt xuống 9.6 Hz, TF cũ). **Trong mô phỏng đã giảm hẳn** nhờ bước vật lý 3 ms (mục 4.8: "Control loop missed" 0–1 mỗi lần so với 11–152). Vẫn cần theo dõi khi chạy trên Pi 4 (yếu hơn PC).
-2. **Vùng chết của động cơ:** xe không đi chậm hơn 0.34 m/s và không quay chậm hơn 1.5 rad/s. Nên cải thiện điều khiển tốc độ thấp trên STM32 để hạ `SPD_RPM_MIN`. Đo ở mục 4.9: 50 RPM làm xe tới staging lệch góc ít hơn ~4 lần và đặt kệ chính xác hơn.
-3. **Phần cứng chưa làm:** mở rộng 4 bánh, node cầu nối UART Pi ↔ STM32 (phải có giữ bán kính cua + covariance cho odom), YDLidar, BNO055, INA226.
+2. **Vùng chết của động cơ:** xe không đi chậm hơn 0.34 m/s và không quay chậm hơn 1.5 rad/s. Nên cải thiện điều khiển tốc độ thấp trên STM32 để hạ `SPD_RPM_MIN`. Đo ở mục 4.9: 50 RPM làm xe tới staging lệch góc ít hơn ~4 lần và đặt kệ chính xác hơn. Mục 4.14: đây là nguyên nhân chính khiến xe "vòng vòng". Tắt vùng chết thì góc quay thừa khi chui gầm giảm từ 627° xuống 4°; phần mềm mới chỉ giảm được một phần. Hướng thử: ở tốc độ thấp, firmware "đá" duty cao lúc khởi động rồi để PID giữ tốc độ, vì ma sát động nhỏ hơn ma sát tĩnh (chưa kiểm chứng trên xe thật).
+3. **Phần cứng chưa làm:** chốt định vị trên mặt nâng (kệ không trượt khi xe quay; mô phỏng đã khoá kệ, mục 4.14), mở rộng 4 bánh, node cầu nối UART Pi ↔ STM32 (phải có giữ bán kính cua + covariance cho odom), YDLidar, BNO055, INA226.
 4. **Kích thước xe** (track, wheelbase) vẫn là ước lượng, cần đo xe thật.
 5. **Node Python trong mô phỏng tốn CPU vì `/clock`:** đã giảm từ 38–75 % xuống 30–48 % mỗi node nhờ bước 3 ms (mục 4.8); vẫn còn vì `/clock` 333 tin/s. Chỉ có trong mô phỏng.
 6. **Dashboard chưa có đăng nhập:** chỉ mở trong LAN / Tailscale.
