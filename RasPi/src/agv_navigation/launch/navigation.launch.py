@@ -7,7 +7,7 @@ Mac dinh dung maps/warehouse.yaml; AMCL dat san vi tri ban dau tai goc frame map
 (cho xe xuat phat luc lap ban do). Xe dat cho khac thi bam "2D Pose Estimate" tren RViz.
 Gui dich: bam "Nav2 Goal" tren RViz.
 
-Vung cam (pallet thap, lidar khong thay) lay tu maps/keepout_mask.yaml qua 2 server
+Vung cam (cac o ke mini, chi o global costmap) lay tu maps/keepout_mask.yaml qua 2 server
 cua Nav2, giong nav2_costmap_filters_demo. Tao lai mat na: scripts/make_keepout_mask.py
 """
 from launch import LaunchDescription
