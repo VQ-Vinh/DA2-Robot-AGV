@@ -8,7 +8,7 @@ const PHASE = {
   retry_wait: 'Chưa tới được, đang thử lại',
   idle: 'Đang chờ lệnh',
 };
-const KIND_VAR = { charge: '--st-charge', receive: '--st-receive', shelf: '--st-shelf' };
+const KIND_VAR = { charge: '--st-charge', pick: '--st-pick', inbound: '--st-inbound', waypoint: '--st-waypoint' };
 const DRAFT_KEY = 'agv-dashboard-draft';
 
 const $ = (s) => document.querySelector(s);
@@ -22,7 +22,7 @@ let view = null;           // {s, ox, oy}: pixel man hinh moi o ban do, vi tri g
 let gotoMode = false;
 let selected = null;       // ten vi tri dang chon
 let draft = loadDraft();
-let keepout = null;        // mat na vung cam (pallet thap lidar khong thay), cung dang voi map
+let keepout = null;        // mat na vung cam (cac o ke mini), cung dang voi map
 const loading = {};        // lop dang tai: {map: true, keepout: true}
 let colors = {};
 
@@ -50,7 +50,7 @@ function readColors() {
 }
 
 function stationColor(st) {
-  return colors[st.kind] || colors.shelf;
+  return colors[st.kind] || colors.waypoint;
 }
 
 function label(name) {
@@ -276,7 +276,7 @@ function draw() {
   ctx.textBaseline = 'bottom';
   for (const [name, st] of Object.entries(cfg.stations)) {
     const [sx, sy] = toScreen(st.x, st.y);
-    const r = Math.max(5, metersToPx(st.kind === 'shelf' ? 0.15 : 0.25));
+    const r = Math.max(5, metersToPx(st.kind === 'waypoint' ? 0.12 : 0.25));
     ctx.beginPath();
     ctx.arc(sx, sy, r, 0, Math.PI * 2);
     ctx.fillStyle = stationColor(st);
@@ -419,7 +419,7 @@ $('#sc-goto').addEventListener('click', () => { if (selected) send(`goto ${selec
 $('#sc-add').addEventListener('click', () => {
   if (!selected) return;
   const st = cfg.stations[selected];
-  const task = st.kind === 'charge' ? 'charge' : st.kind === 'receive' ? 'drop' : 'pick';
+  const task = { charge: 'charge', pick: 'drop', inbound: 'pick' }[st.kind] || 'pass';
   addStep(selected, task, task === 'charge' ? 0 : 3);
 });
 

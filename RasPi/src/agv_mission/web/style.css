@@ -19,8 +19,9 @@
   --robot: #e11d48;
   --keepout: #ef4444;
   --st-charge: #16a34a;
-  --st-receive: #ea8c00;
-  --st-shelf: #3b82f6;
+  --st-pick: #ea8c00;
+  --st-inbound: #3b82f6;
+  --st-waypoint: #8a93a0;
   --radius: 10px;
   color-scheme: light;
 }
@@ -46,8 +47,9 @@
     --robot: #fb7185;
   --keepout: #f87171;
     --st-charge: #22c55e;
-    --st-receive: #f59e0b;
-    --st-shelf: #60a5fa;
+    --st-pick: #f59e0b;
+    --st-inbound: #60a5fa;
+    --st-waypoint: #98a1ad;
     color-scheme: dark;
   }
 }
@@ -72,8 +74,9 @@
   --robot: #fb7185;
   --keepout: #f87171;
   --st-charge: #22c55e;
-  --st-receive: #f59e0b;
-  --st-shelf: #60a5fa;
+  --st-pick: #f59e0b;
+  --st-inbound: #60a5fa;
+  --st-waypoint: #98a1ad;
   color-scheme: dark;
 }
 

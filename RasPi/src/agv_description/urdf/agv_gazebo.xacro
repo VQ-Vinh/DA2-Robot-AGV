@@ -17,6 +17,22 @@
   <xacro:wheel_friction prefix="rl"/>
   <xacro:wheel_friction prefix="rr"/>
 
+  <!-- Mat nang: dem cao su, ke dat len khong truot khi xe tang toc (can mu > a/g = 0.1) -->
+  <gazebo reference="lift_plate">
+    <mu1>1.0</mu1>
+    <mu2>1.0</mu2>
+    <!-- Cam bien "co ke tren mat nang" (xe that: cong tac hanh trinh / hong ngoai) -->
+    <sensor name="lift_contact" type="contact">
+      <!-- Cam bien contact doc <topic> BEN TRONG <contact>; <topic> cap sensor bi bo qua -->
+      <contact>
+        <collision>lift_plate_collision</collision>
+        <topic>/lift/contact</topic>
+      </contact>
+      <update_rate>10</update_rate>
+      <always_on>true</always_on>
+    </sensor>
+  </gazebo>
+
   <!-- Gioi han dong co GA25-370, khop SPD_RPM_MAX trong firmware (STM32/App/Inc/speed_ctrl.h).
        Gioi han theo tung banh (va vung chet SPD_RPM_MIN) do node motor_model lo;
        o day chi la chan tren an toan cho v va w. -->
@@ -54,6 +70,22 @@
       <odom_publish_frequency>30</odom_publish_frequency>
     </plugin>
 
+    <!-- Co cau nang vit me: PID luc bam vi tri. lift_sim gui quy dao vi tri tang dan lift_speed
+         (vit me chay toc do gan nhu khong doi bat ke tai), PID cung + khau I giu duoc ke 3 kg (~30 N).
+         Che do use_velocity_commands da thu: khop khong chuyen dong (REPORT.md). Xe that do firmware lo. -->
+    <plugin filename="gz-sim-joint-position-controller-system"
+            name="gz::sim::systems::JointPositionController">
+      <joint_name>lift_joint</joint_name>
+      <topic>/lift/cmd_pos</topic>
+      <p_gain>10000</p_gain>
+      <i_gain>2000</i_gain>
+      <d_gain>300</d_gain>
+      <i_max>80</i_max>
+      <i_min>-80</i_min>
+      <cmd_max>300</cmd_max>
+      <cmd_min>-300</cmd_min>
+    </plugin>
+
     <plugin filename="gz-sim-joint-state-publisher-system" name="gz::sim::systems::JointStatePublisher">
       <topic>/joint_states</topic>
     </plugin>
@@ -74,7 +106,8 @@
   <gazebo reference="laser_frame">
     <sensor name="lidar" type="gpu_lidar">
       <gz_frame_id>laser_frame</gz_frame_id>
-      <topic>/scan</topic>
+      <!-- /scan_raw: chua ca tru oc cua xe va chan ke dang cho -> payload_manager loc thanh /scan -->
+      <topic>/scan_raw</topic>
       <update_rate>7</update_rate>
       <always_on>true</always_on>
       <visualize>true</visualize>

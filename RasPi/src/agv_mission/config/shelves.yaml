@@ -1,0 +1,49 @@
+# Bo tri kho kieu Kiva: ke mini 4 chan dau trong cac o (slot), xe chui gam, nang ke, cho toi tram.
+# NGUON DUY NHAT cho vi tri o ke. Sau khi sua file nay phai chay lai:
+#   python3 agv_gazebo/scripts/make_warehouse.py      -> world, danh sach dock cua Nav2
+#   (lap lai ban do SLAM neu doi vi tri)              -> agv_navigation/maps/warehouse.*
+#   python3 agv_navigation/scripts/make_keepout_mask.py
+#
+# Toa do frame map (goc = cho xe xuat phat luc lap ban do, world x = -4.5, y = 0: map = world + (4.5, 0)).
+#   x, y : tam o (= tam ke khi dau dung cho)
+#   yaw  : huong xe khi da chui vao gam (rad); xe vao tu loi di, staging cach tam staging_offset
+#
+# Hai day o doi dien nhau qua loi giua (map y = -1.225 .. 1.225, rong 2.45 m):
+#   day bac  y = +1.6, xe vao huong +y (yaw = +pi/2)
+#   day nam  y = -1.6, xe vao huong -y (yaw = -pi/2)
+#   cot x = 3.0 .. 7.4 cach nhau 1.1 m (ke 0.75 m -> khe giua 2 ke 0.35 m)
+
+shelf:
+  # 0.75 m: khe ~15 cm moi ben giua xe (rong 0.38 m) va chan ke (Kiva that: ke 0.9-1.2 m, xe
+  # 0.76 m). Da thu 0.55 m (khe 5.5 cm) va 0.65 m (khe 10 cm): AMCL lech ~5 cm + goc staging lech
+  # toi 12 deg (vung chet dong co) thi docking du bao dam chan ke (REPORT.md).
+  size: 0.75            # m, ke vuong
+  leg: 0.03             # m, chan vuong
+  clearance: 0.18       # m, mat duoi san ke (xe cao 0.167 m khi ha mat nang)
+  height: 0.62          # m
+  mass: 1.0             # kg, ke rong
+  goods_mass: 2.0       # kg, hang tren ke (de bai 1-3 kg)
+  staging_offset: 1.0   # m, diem dung truoc o, trong loi di (dai de xe kip nan thang truoc khi vao gam)
+
+slots:
+  N1: {x: 3.0, y: 1.6, yaw: 1.5708}
+  N2: {x: 4.1, y: 1.6, yaw: 1.5708}
+  N3: {x: 5.2, y: 1.6, yaw: 1.5708}
+  N4: {x: 6.3, y: 1.6, yaw: 1.5708}
+  N5: {x: 7.4, y: 1.6, yaw: 1.5708}
+  S1: {x: 3.0, y: -1.6, yaw: -1.5708}
+  S2: {x: 4.1, y: -1.6, yaw: -1.5708}
+  S3: {x: 5.2, y: -1.6, yaw: -1.5708}
+  S4: {x: 6.3, y: -1.6, yaw: -1.5708}
+  S5: {x: 7.4, y: -1.6, yaw: -1.5708}
+
+# Ke va o luc khoi dong (N5, S5 de trong de doi cho ke)
+shelves:
+  ke_01: N1
+  ke_02: N2
+  ke_03: N3
+  ke_04: N4
+  ke_05: S1
+  ke_06: S2
+  ke_07: S3
+  ke_08: S4

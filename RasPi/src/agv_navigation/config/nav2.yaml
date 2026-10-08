@@ -160,14 +160,14 @@ local_costmap:
       width: 3
       height: 3
       resolution: 0.05
-      robot_radius: 0.25           # AGV: nua duong cheo xe 0.30 x 0.37 m
+      # AGV: hinh chu nhat cua xe (mica 0.30 m + banh ra ngoai, rong 0.37 m) + 1 cm. Khi cho ke
+      # mini, payload_manager.py gui footprint cua ke (0.84 x 0.84 m) len topic footprint.
+      footprint: "[[0.16, 0.19], [0.16, -0.19], [-0.16, -0.19], [-0.16, 0.19]]"
       plugins: ["voxel_layer", "inflation_layer"]
-      # AGV: vung cam (pallet thap, lidar khong thay) tu maps/keepout_mask, nhu nav2_costmap_filters_demo
-      filters: ["keepout_filter"]
-      keepout_filter:
-        plugin: "nav2_costmap_2d::KeepoutFilter"
-        enabled: True
-        filter_info_topic: "/costmap_filter_info"
+      # AGV: KHONG dung vung cam o local costmap. Vung cam (o ke mini) chi o global costmap de
+      # khong lap duong xuyen gam ke; neu de o day thi bo dieu khien docking thay mep vung cam la
+      # vat can va khong cho chui vao o ("Collision detected", REPORT.md). Chan ke van nam trong
+      # local costmap nho lidar.
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
@@ -204,11 +204,14 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
-      robot_radius: 0.25           # AGV: nua duong cheo xe 0.30 x 0.37 m
+      # AGV: hinh chu nhat cua xe (mica 0.30 m + banh ra ngoai, rong 0.37 m) + 1 cm. Khi cho ke
+      # mini, payload_manager.py gui footprint cua ke (0.84 x 0.84 m) len topic footprint.
+      footprint: "[[0.16, 0.19], [0.16, -0.19], [-0.16, -0.19], [-0.16, 0.19]]"
       resolution: 0.05
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
-      # AGV: vung cam (pallet thap, lidar khong thay) tu maps/keepout_mask, nhu nav2_costmap_filters_demo
+      # AGV: vung cam (cac o ke mini: khong cho lap duong xuyen gam ke) tu maps/keepout_mask,
+      # nhu nav2_costmap_filters_demo. Chui vao o do docking_server lo (bo qua costmap gan dock).
       filters: ["keepout_filter"]
       keepout_filter:
         plugin: "nav2_costmap_2d::KeepoutFilter"
@@ -374,7 +377,8 @@ collision_monitor:
     scan:
       type: "scan"
       topic: "scan"
-      min_height: 0.15
+      # AGV: lidar giua 2 tang quet o ~0.12 m (mac dinh Nav2 0.15 se bo het diem cua xe nay)
+      min_height: 0.05
       max_height: 2.0
       enabled: True
 
@@ -393,7 +397,15 @@ docking_server:
     dock_prestaging_tolerance: 0.5
 
     # Types of docks
-    dock_plugins: ['simple_charging_dock']
+    # AGV: shelf_dock = o ke mini (chui gam, khong sac). Xe dung o staging trong loi di,
+    # truoc o 1.0 m, roi tien thang vao toi tam o.
+    dock_plugins: ['simple_charging_dock', 'shelf_dock']
+    shelf_dock:
+      plugin: 'opennav_docking::SimpleNonChargingDock'
+      docking_threshold: 0.03
+      staging_x_offset: -1.0               # = -shelf.staging_offset (agv_mission/config/shelves.yaml)
+      use_external_detection_pose: false   # giai doan 1: tin vi tri o trong ban do (AMCL)
+      use_stall_detection: false
     simple_charging_dock:
       plugin: 'opennav_docking::SimpleChargingDock'
       docking_threshold: 0.05
@@ -410,13 +422,51 @@ docking_server:
       external_detection_rotation_yaw: 0.0
       filter_coef: 0.1
 
-    # Dock instances
-    # The following example illustrates configuring dock instances.
-    # docks: ['home_dock']  # Input your docks here
-    # home_dock:
-    #   type: 'simple_charging_dock'
-    #   frame: map
-    #   pose: [0.0, 0.0, 0.0]
+    # Dock instances: moi o ke la mot dock, SINH TU DONG tu agv_mission/config/shelves.yaml
+    # boi agv_gazebo/scripts/make_warehouse.py (khong sua tay giua 2 dong danh dau)
+    # BEGIN DOCKS (make_warehouse.py)
+    docks: ['slot_N1', 'slot_N2', 'slot_N3', 'slot_N4', 'slot_N5', 'slot_S1', 'slot_S2', 'slot_S3', 'slot_S4', 'slot_S5']
+    slot_N1:
+      type: 'shelf_dock'
+      frame: map
+      pose: [3.0, 1.6, 1.5708]
+    slot_N2:
+      type: 'shelf_dock'
+      frame: map
+      pose: [4.1, 1.6, 1.5708]
+    slot_N3:
+      type: 'shelf_dock'
+      frame: map
+      pose: [5.2, 1.6, 1.5708]
+    slot_N4:
+      type: 'shelf_dock'
+      frame: map
+      pose: [6.3, 1.6, 1.5708]
+    slot_N5:
+      type: 'shelf_dock'
+      frame: map
+      pose: [7.4, 1.6, 1.5708]
+    slot_S1:
+      type: 'shelf_dock'
+      frame: map
+      pose: [3.0, -1.6, -1.5708]
+    slot_S2:
+      type: 'shelf_dock'
+      frame: map
+      pose: [4.1, -1.6, -1.5708]
+    slot_S3:
+      type: 'shelf_dock'
+      frame: map
+      pose: [5.2, -1.6, -1.5708]
+    slot_S4:
+      type: 'shelf_dock'
+      frame: map
+      pose: [6.3, -1.6, -1.5708]
+    slot_S5:
+      type: 'shelf_dock'
+      frame: map
+      pose: [7.4, -1.6, -1.5708]
+    # END DOCKS
 
     controller:
       k_phi: 3.0
@@ -428,7 +478,8 @@ docking_server:
       footprint_topic: "local_costmap/published_footprint"
       transform_tolerance: 0.1
       projection_time: 5.0
-      simulation_step: 0.1
+      # AGV: ten dung la simulation_time_step (file mau ghi simulation_step, bi bo qua)
+      simulation_time_step: 0.1
       dock_collision_threshold: 0.3
 
 loopback_simulator:

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Tao mat na vung cam (keepout) cho Nav2 tu ban do kho.
 
-Pallet cao 15 cm, lidar quet o 17 cm nen khong thay -> Nav2 phai biet truoc qua
-mat na: cung kich thuoc / goc toa do voi ban do, pixel den = cam vao.
+Vung cam = cac o ke mini (agv_mission/config/shelves.yaml): khong cho lap duong xuyen gam ke
+(xe vua lot giua 4 chan, nhung chi docking_server moi duoc chui vao, cham va thang hang).
+Truoc day vung cam la 2 pallet thap ma lidar o 0.17 m khong thay; lidar da ha xuong 0.12 m
+nen pallet nam ngay trong ban do.
 
   python3 make_keepout_mask.py            # doc maps/warehouse.yaml, ghi maps/keepout_mask.*
 
@@ -16,14 +18,15 @@ from PIL import Image, ImageDraw
 HERE = os.path.dirname(os.path.abspath(__file__))
 MAPS = os.path.join(HERE, '..', 'maps')
 
-# Frame map = world doi di cho xe xuat phat luc lap ban do (world x = -4.5, y = 0)
-START_X, START_Y = -4.5, 0.0
+SHELVES = os.path.join(HERE, '..', '..', 'agv_mission', 'config', 'shelves.yaml')
 MARGIN = 0.05   # m, noi rong moi canh
-# (tam x, tam y, dai x, rong y) trong frame world, lay tu agv_gazebo/worlds/warehouse.sdf
-ZONES = [
-    (5.0, 2.8, 1.0, 0.8),    # pallet_1
-    (5.0, -2.8, 1.0, 0.8),   # pallet_2
-]
+
+
+def zones():
+    """(tam x, tam y, dai x, rong y) frame map: moi o ke = ke + 4 cm moi ben (vach son tren san)."""
+    lay = yaml.safe_load(open(SHELVES))
+    size = lay['shelf']['size'] + 0.08
+    return [(sl['x'], sl['y'], size, size) for sl in lay['slots'].values()]
 
 
 def main():
@@ -34,11 +37,12 @@ def main():
 
     mask = Image.new('L', (w, h), 255)
     draw = ImageDraw.Draw(mask)
-    for cx, cy, sx, sy in ZONES:
-        x0 = cx - START_X - sx / 2 - MARGIN
-        x1 = cx - START_X + sx / 2 + MARGIN
-        y0 = cy - START_Y - sy / 2 - MARGIN
-        y1 = cy - START_Y + sy / 2 + MARGIN
+    zs = zones()
+    for cx, cy, sx, sy in zs:
+        x0 = cx - sx / 2 - MARGIN
+        x1 = cx + sx / 2 + MARGIN
+        y0 = cy - sy / 2 - MARGIN
+        y1 = cy + sy / 2 + MARGIN
         # Anh: cot = (x - ox) / res, hang dem tu tren xuong = h - (y - oy) / res
         draw.rectangle([(x0 - ox) / res, h - (y1 - oy) / res,
                         (x1 - ox) / res, h - (y0 - oy) / res], fill=0)
@@ -47,7 +51,7 @@ def main():
     with open(os.path.join(MAPS, 'keepout_mask.yaml'), 'w', newline='\n') as f:
         f.write(f"image: keepout_mask.pgm\nmode: scale\nresolution: {res}\n"
                 f"origin: [{ox}, {oy}, 0.0]\nnegate: 0\noccupied_thresh: 0.65\nfree_thresh: 0.196\n")
-    print(f'mat na {w}x{h}, {len(ZONES)} vung cam')
+    print(f'mat na {w}x{h}, {len(zs)} vung cam')
 
 
 if __name__ == '__main__':
