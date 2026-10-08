@@ -5,12 +5,16 @@ Hai cach ra lenh:
   1. Tu dong khi khoi dong: tham so autostart_mission (ten trong missions.yaml).
   2. Go lenh vao topic /mission/command (std_msgs/String), de nhat la dung agv_cmd.py:
        goto <vi_tri>     di toi mot vi tri (huy viec dang lam)
+       goto_xy x y [yaw] di toi mot diem bat ky tren ban do (m, rad, frame map)
        run <nhiem_vu>    chay nhiem vu dinh san
+       seq <buoc> ...    chay chuoi buoc tu tao, moi buoc = vi_tri[:task[:wait_s]]
+                         vd: seq ke_A1:pick ke_C2:pick:5 khu_nhan_hang:drop tram_sac:charge
        cancel            dung lai
        list              liet ke vi tri va nhiem vu
        status            viec dang lam
 
-Trang thai phat tren /mission/status (std_msgs/String, giu tin cuoi cho node vao sau).
+Trang thai phat tren /mission/status (std_msgs/String, giu tin cuoi cho node vao sau) de nguoi
+doc, va /mission/state (JSON trong std_msgs/String, giu tin cuoi) de chuong trinh doc (web dashboard).
 Vi tri ve tren RViz qua /mission/stations (MarkerArray).
 
 Moi chang: gui dich cho Nav2; that bai thi xoa costmap va thu lai `retries` lan; van that
@@ -20,6 +24,7 @@ tung chang (thoi gian mo phong / thoi gian ROS).
 Khong dung nav2_simple_commander.BasicNavigator: ham cho cua no gui lai initial pose moi
 lan spin_once tra ve, de lam AMCL reset lien tuc (xem REPORT.md, buoc 4).
 """
+import json
 import math
 
 import rclpy
@@ -37,6 +42,7 @@ from std_msgs.msg import String
 from visualization_msgs.msg import Marker, MarkerArray
 
 TASK_NAME = {'pick': 'lay hang', 'drop': 'tra hang', 'charge': 'sac pin', 'pass': 'di qua'}
+DEFAULT_WAIT = {'pick': 3.0, 'drop': 3.0, 'charge': 0.0, 'pass': 0.0}
 KIND_COLOR = {'charge': (0.1, 0.8, 0.2), 'receive': (1.0, 0.55, 0.0), 'shelf': (0.2, 0.5, 1.0)}
 
 
@@ -56,6 +62,8 @@ class MissionServer(Node):
 
         latched = QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.status_pub = self.create_publisher(String, 'mission/status', latched)
+        self.state_pub = self.create_publisher(String, 'mission/state', latched)
+        self.last_state = None
         self.marker_pub = self.create_publisher(MarkerArray, 'mission/stations', latched)
         self.create_subscription(String, 'mission/command', self.on_command, 10)
         self.create_subscription(PoseWithCovarianceStamped, 'amcl_pose', self.on_amcl, 10)
@@ -85,7 +93,9 @@ class MissionServer(Node):
         self.results = []          # (vi tri, ok, thoi gian)
         self.mission_start = 0.0
 
+        self.mission_steps = []
         self.publish_markers()
+        self.publish_state()
         self.create_timer(0.2, self.tick)
         self.say(f'{len(self.stations)} vi tri, {len(self.missions)} nhiem vu. Cho Nav2 san sang...')
 
@@ -123,6 +133,40 @@ class MissionServer(Node):
                 self.say(f'Khong co vi tri "{arg}". Go "list" de xem danh sach.')
                 return
             self.start_mission(None, [{'station': arg, 'task': 'pass', 'wait_s': 0.0}], runs=1)
+        elif cmd == 'goto_xy':
+            try:
+                x, y = float(parts[1]), float(parts[2])
+                yaw = float(parts[3]) if len(parts) > 3 else 0.0
+            except (IndexError, ValueError):
+                self.say('Dung: goto_xy <x> <y> [yaw]  (m, m, rad, frame map)')
+                return
+            if not all(math.isfinite(v) for v in (x, y, yaw)):
+                self.say('goto_xy: toa do khong hop le')
+                return
+            name = f'diem ({x:.2f}, {y:.2f})'
+            self.start_mission(None, [{'station': name, 'task': 'pass', 'wait_s': 0.0,
+                                       'pose': {'x': x, 'y': y, 'yaw': yaw}}], runs=1)
+        elif cmd == 'seq':
+            steps = []
+            for tok in parts[1:]:
+                f = tok.split(':')
+                task = f[1] if len(f) > 1 and f[1] else 'pass'
+                if f[0] not in self.stations or task not in TASK_NAME:
+                    self.say(f'seq: buoc "{tok}" sai (vi tri hoac task khong co)')
+                    return
+                try:
+                    wait = float(f[2]) if len(f) > 2 else DEFAULT_WAIT[task]
+                except ValueError:
+                    self.say(f'seq: thoi gian cho "{f[2]}" khong phai so')
+                    return
+                if not math.isfinite(wait):
+                    self.say(f'seq: thoi gian cho "{f[2]}" khong hop le')
+                    return
+                steps.append({'station': f[0], 'task': task, 'wait_s': max(0.0, min(wait, 600.0))})
+            if not steps:
+                self.say('Dung: seq <vi_tri>[:task[:wait_s]] ...')
+                return
+            self.start_mission('tu_tao', steps, runs=1)
         elif cmd == 'run':
             if arg not in self.missions:
                 self.say(f'Khong co nhiem vu "{arg}". Go "list" de xem danh sach.')
@@ -142,7 +186,7 @@ class MissionServer(Node):
             else:
                 self.say('Ranh, dang cho lenh.')
         else:
-            self.say(f'Lenh khong hieu: "{msg.data}". Dung: goto | run | cancel | list | status')
+            self.say(f'Lenh khong hieu: "{msg.data}". Dung: goto | goto_xy | run | seq | cancel | list | status')
 
     def start_mission(self, name, steps, runs):
         self.stop_current()
@@ -163,8 +207,26 @@ class MissionServer(Node):
         self.step = None
         self.phase = 'idle'
 
+    def publish_state(self):
+        """Trang thai dang may doc cho web dashboard; chi phat khi co thay doi."""
+        state = {
+            'ready': self.ready_reported,
+            'mission': self.mission,
+            'phase': self.phase if self.step else 'idle',
+            'step': self.step,
+            'queue': self.queue,
+            'done': [{'station': st, 'ok': ok, 'time_s': round(dt, 1)} for st, ok, dt in self.results],
+            'total': len(self.results) + (1 if self.step else 0) + len(self.queue),
+            'runs_left': self.runs_left if self.mission else 0,
+        }
+        text = json.dumps(state, ensure_ascii=False)
+        if text != self.last_state:
+            self.last_state = text
+            self.state_pub.publish(String(data=text))
+
     # ---------- vong lap ----------
     def tick(self):
+        self.publish_state()
         if not self.ready():
             return
         if not self.ready_reported:
@@ -203,7 +265,7 @@ class MissionServer(Node):
 
     # ---------- Nav2 ----------
     def send_goal(self):
-        s = self.stations[self.step['station']]
+        s = self.step.get('pose') or self.stations[self.step['station']]
         goal = NavigateToPose.Goal()
         goal.pose = PoseStamped()
         goal.pose.header.frame_id = 'map'   # stamp = 0: Nav2 dung TF moi nhat
