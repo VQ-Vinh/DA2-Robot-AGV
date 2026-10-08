@@ -59,6 +59,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 07/10/2026 | Nhật ký quá trình (tài liệu này) + skill ghi báo cáo | #8 |
 | 07/10/2026 | Bước 5: nhiệm vụ kho (trạm sạc, khu nhận hàng, kịch bản + lệnh), video demo | #9 |
 | 07–08/10/2026 | Sửa vấn đề còn mở: AMCL lệch ở khu phía đông, "collision ahead" trong lối hẹp | #10 |
+| 08/10/2026 | Web dashboard giao nhiệm vụ qua trình duyệt | #11 |
 
 ---
 
@@ -259,6 +260,45 @@ Các sự cố gặp phải, theo thứ tự:
   - Hai triệu chứng có thể cùng một gốc; đo xem chúng xảy ra theo thứ tự nào trước khi sửa từng cái.
   - Mặc định của thư viện là điểm xuất phát tốt, nhưng khi số đo cho thấy giả định của nó (ở đây: độ nhiễu odom) sai lệch xa thực tế thì chỉnh theo số đo, và ghi lý do ngay trong file cấu hình.
 
+### 4.7. Web dashboard giao nhiệm vụ (PR #11)
+- **Mục tiêu:** người vận hành mở trình duyệt (điện thoại, laptop) qua LAN hoặc Tailscale để xem bản đồ, vị trí xe và giao nhiệm vụ, không phải cài ROS 2 hay gõ lệnh terminal.
+- **Chọn web hay app Qt:** chọn web. Các AMR thương mại (MiR) và Open-RMF cho người vận hành dùng giao diện web; Qt chủ yếu dùng cho công cụ kỹ thuật (RViz, rqt). Lý do quyết định: trình duyệt chỉ cần HTTP tới Pi. Một app Qt phải tham gia DDS, mà mạng PC ↔ Pi ở mục 3.2 đã rất khó cấu hình.
+- **Chọn mã nguồn mở hay tự viết:**
+
+  | Dự án | Lý do không dùng làm giao diện chính |
+  |---|---|
+  | rosbridge_suite + roslibjs | Bản ROS 2 nặng: tác giả Vizanti ghi nhận nó không chạy nổi trên Pi 4 khi tải thường. Trình duyệt cũng phải biết cấu trúc topic ROS |
+  | Vizanti (có bản Jazzy) | Nhắm robot ngoài trời (GPS, tàu, robot hiện trường), không có khái niệm kệ, trạm sạc, nhiệm vụ kho |
+  | foxglove_bridge + Lichtblick | Công cụ debug kiểu RViz trên trình duyệt, hợp cho kỹ sư, không hợp cho người vận hành |
+  | Open-RMF rmf-web | Dành cho cả đội robot, quá nặng cho 1 xe |
+
+  Kết luận: tự viết một server nhỏ bằng thư viện chuẩn Python (không cài thêm gì lên Pi) và HTML/JS thuần. API theo nghiệp vụ (`run giao_hang`), giống REST API của MiR, và dùng lại nguyên `mission_server` của bước 5.
+- **Cách làm:**
+  - Node `web_dashboard.py` có các API: `GET /api/config`, `GET /api/map`, `GET /api/events` (Server-Sent Events 5 Hz: vị trí xe từ TF, đường đi `/plan`, trạng thái, nhật ký) và `POST /api/command`. Lệnh POST chỉ nhận các động từ cho phép và bị giới hạn độ dài.
+  - `mission_server` có thêm topic `/mission/state` (JSON) cho chương trình đọc, và 2 lệnh mới: `seq` (chuỗi bước tự tạo) và `goto_xy` (đi tới điểm bấm trên bản đồ).
+  - Giao diện gồm: bản đồ (canvas), nút DỪNG, nhiệm vụ định sẵn, trình tạo chuỗi nhiệm vụ, nút đi nhanh, nhật ký. Có bố cục cho điện thoại và giao diện sáng/tối.
+- **Sai lầm / sự cố:**
+
+  | # | Sự cố | Nguyên nhân (tìm bằng cách nào) | Cách sửa |
+  |---|---|---|---|
+  | 1 | Trợ lý AI bắt tay vào sửa code khi người làm đồ án mới hỏi "có nên làm không", bị dừng lại | Hiểu nhầm câu hỏi ý kiến thành yêu cầu làm | Hoàn tác, xoá nhánh; lập kế hoạch và so sánh phương án trước, được duyệt mới làm |
+  | 2 | Bản đồ chỉ là một chấm nhỏ ở góc màn hình | `fit()` chạy khi canvas chưa có kích thước (W = 0, đọc biến `view` trong trình duyệt thấy tỉ lệ = −0.198) | Chưa có kích thước thì chưa fit, để `ResizeObserver` gọi lại |
+  | 3 | Đọc mã thấy file web sẽ bị trả 404 khi build `--symlink-install` | `realpath` đi theo symlink ra ngoài thư mục web, nên phép kiểm tra chống `..` chặn luôn file hợp lệ | Dùng `abspath`: vẫn chặn `..`, giữ symlink; kiểm lại bằng `curl` đường dẫn `../../etc/passwd` → 404 |
+  | 4 | Node dashboard tốn **82 % CPU** | So sánh: `mission_server` cũng tốn 77 %; một node rclpy **rỗng** bật `use_sim_time` tốn 53 %. Nguyên nhân là `/clock` của Gazebo (bước vật lý 1 ms, khoảng 1000 tin/giây), rclpy phải xử lý từng tin | Dashboard chỉ cần TF mới nhất nên bỏ `use_sim_time` → **8 %** (2 trình duyệt mở). Trên Pi không có `/clock` |
+  | 5 | Khởi động lại node dashboard thì nhật ký trên trang bị lặp; bản sửa đầu tiên lại làm nhật ký trống | Id dòng nhật ký đếm lại từ đầu. Bản sửa đầu so `after > log_id`, nhưng node mới nhận đúng 10 dòng (giữ lại trên topic) nên `after = 10` không lớn hơn → không gửi gì | Server có mã phiên (`boot`), trình duyệt gửi kèm khi kết nối lại; khác phiên thì xoá và nhận lại toàn bộ |
+
+- **Kết quả** (mô phỏng headless, bấm nút trên dashboard, xem trên browser pane):
+  - `giao_hang` 3/3 chặng, 66.0 s.
+  - Chuỗi tự tạo (Kệ A1 lấy hàng → Khu nhận hàng trả hàng, chờ 2 s) 2/2 chặng, 36.4 s.
+  - `giao_hang_2` (chạy bằng `curl` POST) 4/4 chặng, 72.4 s.
+  - Bấm bản đồ → xe đi tới điểm đó; DỪNG giữa chặng → hai lần đọc vị trí cách nhau 3 s lệch nhau 0 mm.
+  - Lệnh sai (`rm`, JSON sai, `cmd` không phải chuỗi, lệnh 1.8 kB) bị từ chối, path traversal → 404. `agv_cmd.py` vẫn dùng song song được.
+  - Khởi động lại node giữa chừng → trang tự kết nối lại sau khoảng 2 s.
+  - Chưa thử từ điện thoại thật qua Tailscale, chưa chạy trên Pi.
+- **Bài học:**
+  - Khi số đo của phần mới xấu bất thường, đo luôn phần cũ và một trường hợp rỗng để so; ở đây lỗi không nằm ở code mới.
+  - Câu hỏi "nên làm A hay B" là xin ý kiến, không phải yêu cầu làm.
+
 ---
 
 ## 5. Tổng hợp sai lầm và bài học
@@ -276,6 +316,8 @@ Các sự cố gặp phải, theo thứ tự:
 | Nhiệm vụ | Gửi đích khi Nav2 chưa "active" | Kiểm tra trạng thái vòng đời như thư viện chuẩn |
 | Nhiệm vụ | Đọc nhầm tin cũ của kênh giữ tin | Bỏ qua tin nhận trước khi gửi lệnh |
 | Định vị | Để nguyên tham số AMCL mặc định dù xe quay tại chỗ nhiều và odom tốt hơn giả định | Đo độ nhiễu odom thật, chỉnh `alpha` theo số đo; kiểm giả thuyết bằng phép đo trước khi sửa |
+| Dashboard | Bắt tay vào code khi mới được hỏi ý kiến | Hỏi "nên làm gì" thì trả lời và lập kế hoạch, chưa sửa code |
+| Dashboard | Tưởng node mới tốn CPU do code của nó | Đo cả node cũ và node rỗng để tìm phần chung (`/clock` 1 kHz) |
 
 ## 6. Vấn đề còn mở
 Đã giải quyết (xem 4.6): AMCL lệch ở khu phía đông; "collision ahead" trong lối hẹp (từ 24 lần một chặng xuống 0–4 lần một nhiệm vụ).
@@ -284,6 +326,8 @@ Các sự cố gặp phải, theo thứ tự:
 2. **Vùng chết của động cơ:** xe không đi chậm hơn 0.34 m/s và không quay chậm hơn 1.5 rad/s. Nên cải thiện điều khiển tốc độ thấp trên STM32 để hạ `SPD_RPM_MIN`.
 3. **Phần cứng chưa làm:** mở rộng 4 bánh, node cầu nối UART Pi ↔ STM32 (phải có giữ bán kính cua + covariance cho odom), YDLidar, BNO055, INA226.
 4. **Kích thước xe** (track, wheelbase) vẫn là ước lượng, cần đo xe thật.
+5. **Node Python trong mô phỏng tốn nhiều CPU vì `/clock` 1 kHz:** `mission_server` 77 %, node rỗng 53 %. Chỉ có trong mô phỏng. **Giả thuyết chưa kiểm chứng:** đây có thể là một phần nguyên nhân của việc khựng khoảng 1 s (vấn đề 1).
+6. **Dashboard chưa có đăng nhập:** chỉ mở trong LAN / Tailscale.
 
 ## 7. Cách ghi tiếp tài liệu này
 Mỗi khi xong một phần việc hoặc sửa xong một sự cố, thêm vào mục tương ứng theo quy ước ở đầu file: mục tiêu, cách làm, sai lầm, nguyên nhân, cách sửa, kết quả có số liệu, bài học. Quy tắc này nằm trong skill `.claude/skills/report-log`.
