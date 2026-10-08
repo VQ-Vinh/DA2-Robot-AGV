@@ -17,16 +17,23 @@ Lenh: /order/command (std_msgs/String)
   cancel <id>                 huy don dang cho (don dang chay: chi huy duoc truoc khi nang ke)
   confirm [id]                nguoi o tram da lay hang xong -> xe tra ke
   pause | resume              tam dung nhan don moi / tiep tuc (don dang chay van lam xong)
-  ack                         xac nhan da xu ly loi (xe dang o trang thai error)
+  estop                       DUNG KHAN: huy moi lenh chay, xe dung; "ack" thi lam tiep buoc dang do
+  ack                         xac nhan da xu ly su co
+  shelf <ke> <o>              nguoi dat lai ke vao o (sau khi ke roi / chuyen tay)
 Trang thai: /order/state (std_msgs/String, JSON, giu tin cuoi): hang doi, don dang chay + buoc,
 vi tri ke, lich su gan day. Nhat ky de doc: /order/status (String, giu tin cuoi).
 
 Du lieu: SQLite (tham so db_path): bang orders (lich su, thong ke) va shelves (ke dang o o nao).
 Mo phong: reset_shelves:=true nap lai vi tri ke tu shelves.yaml moi lan chay (world cung reset).
 
-Loi: moi chang di chuyen / chui gam thu lai 1 lan (xoa costmap). Van loi:
-  - chua nang ke -> don "failed", lam don tiep theo
-  - dang cho ke -> xe dung, trang thai "error", cho nguoi xu ly roi gui "ack" (giai doan 5 se tu xu ly)
+Loi va su co (giai doan 5, REPORT.md 4.13):
+  - moi chang thu lai 1 lan sau khi xoa costmap
+  - chang di chuyen van loi = duong bi chan: canh bao, cho blocked_retry_s roi thu lai, toi da
+    blocked_wait_s; van chan -> xe dung cho nguoi don duong, "ack" thi di tiep
+  - loi truoc khi nang ke -> don tra lai hang doi (toi da max_attempts lan), lam don khac
+  - dung khan (estop): huy moi action, van toc 0; "ack" thi lam lai buoc dang do
+  - roi ke khi dang cho (mat tin hieu co ke > 1 s) / co cau nang loi -> xe dung, don loi, ke "chua ro
+    vi tri" (nguoi dat lai roi gui "shelf <ke> <o>"); "ack" thi xe ve sac
 """
 import json
 import math
@@ -38,7 +45,7 @@ import time
 import rclpy
 import yaml
 from action_msgs.msg import GoalStatus
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Twist
 from geometry_msgs.msg import Point
 from lifecycle_msgs.msg import State
 from lifecycle_msgs.srv import GetState
@@ -63,6 +70,14 @@ class OrderError(Exception):
     pass
 
 
+class Fault(Exception):
+    """Su co can nguoi xu ly. resumable: sau khi nguoi bam "Da xu ly" thi lam lai buoc dang do."""
+
+    def __init__(self, kind, msg, resumable):
+        super().__init__(msg)
+        self.kind, self.msg, self.resumable = kind, msg, resumable
+
+
 class OrderManager(Node):
     def __init__(self):
         super().__init__('order_manager')
@@ -81,6 +96,14 @@ class OrderManager(Node):
         self.charger_staging = self.declare_parameter('charger_staging_offset', 0.7).value
         self.battery = None        # (phan tram 0..1, dang sac?)
         self.charge_hold = False   # dang giu de sac, khong nhan don
+        self.blocked_retry_s = self.declare_parameter('blocked_retry_s', 10.0).value   # duong bi chan: cho roi thu lai
+        self.blocked_wait_s = self.declare_parameter('blocked_wait_s', 60.0).value     # ... toi da, roi bao nguoi
+        self.stall_alarm_s = self.declare_parameter('stall_alarm_s', 15.0).value       # khong tien ve dich -> canh bao
+        self.max_attempts = self.declare_parameter('max_attempts', 2).value            # lan thu mot don truoc khi bo
+        self.fault = None          # {'kind', 'msg', 'resumable'}: xe dung, cho nguoi
+        self.alarm = None          # canh bao khong dung xe (vd duong bi chan, dang cho thu lai)
+        self.active = []           # goal handle dang chay (de huy khi co su co); ClientGoalHandle khong hash duoc -> list
+        self.drop_since = None
 
         self.layout = yaml.safe_load(open(self.get_parameter('shelves_file').value))
         self.stations = yaml.safe_load(open(self.get_parameter('stations_file').value))['stations']
@@ -94,7 +117,6 @@ class OrderManager(Node):
         self.paused = False
         self.current = None        # dict don dang chay
         self.step = None
-        self.error = None
         self.lift_state, self.has_load = None, None
         self.cancel_requested = set()
 
@@ -104,6 +126,7 @@ class OrderManager(Node):
             depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.status_pub = self.create_publisher(String, 'order/status', latched)
         self.lift_pub = self.create_publisher(String, 'lift/command', 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         self.create_subscription(String, 'order/command', self.on_command, 10)
         self.create_subscription(String, 'lift/state', lambda m: setattr(self, 'lift_state', m.data), latched)
         self.create_subscription(Bool, 'lift/has_load', lambda m: setattr(self, 'has_load', m.data), latched)
@@ -119,6 +142,7 @@ class OrderManager(Node):
         self.clear_clients = [self.create_client(ClearEntireCostmap, s) for s in (
             'global_costmap/clear_entirely_global_costmap', 'local_costmap/clear_entirely_local_costmap')]
         self.create_timer(1.0, self.publish_state)
+        self.create_timer(0.2, self.monitor)
         threading.Thread(target=self.worker, daemon=True).start()
         self.say(f'{len(self.slots)} o ke, {self.count_pending()} don dang cho. Cho Nav2...')
 
@@ -131,6 +155,8 @@ class OrderManager(Node):
               id INTEGER PRIMARY KEY AUTOINCREMENT, shelf TEXT, station TEXT, priority INTEGER,
               status TEXT, created REAL, started REAL, finished REAL, error TEXT);
             CREATE TABLE IF NOT EXISTS shelves (name TEXT PRIMARY KEY, slot TEXT);''')
+        if 'attempts' not in [r[1] for r in self.db.execute('PRAGMA table_info(orders)')]:
+            self.db.execute('ALTER TABLE orders ADD COLUMN attempts INTEGER DEFAULT 0')
         with self.lock:
             if self.reset_shelves or not self.db.execute('SELECT COUNT(*) FROM shelves').fetchone()[0]:
                 self.db.execute('DELETE FROM shelves')
@@ -176,7 +202,9 @@ class OrderManager(Node):
         orders = [dict(zip(keys, r)) for r in rows]
         state = {
             'paused': self.paused,
-            'error': self.error,
+            'error': self.fault['msg'] if self.fault else None,
+            'fault_kind': self.fault['kind'] if self.fault else None,
+            'alarm': self.alarm,
             'current': self.current['id'] if self.current else None,
             'step': self.step,
             'step_label': STEP_NAME.get(self.step),
@@ -212,8 +240,13 @@ class OrderManager(Node):
             except ValueError:
                 self.say(f'uu tien "{p[3]}" khong phai so')
                 return
-            if self.shelf_slot(shelf) is None:
+            with self.lock:
+                known = self.db.execute('SELECT slot FROM shelves WHERE name=?', (shelf,)).fetchone()
+            if known is None:
                 self.say(f'Khong co ke "{shelf}"')
+                return
+            if known[0] is None:
+                self.say(f'{shelf} chua ro vi tri (roi khi dang cho?). Dat lai ke roi gui "shelf {shelf} <o>"')
                 return
             if self.stations.get(station, {}).get('kind') != 'pick':
                 self.say(f'"{station}" khong phai tram lay hang')
@@ -255,11 +288,27 @@ class OrderManager(Node):
             self.say('Tiep tuc nhan don')
             self.wake.set()
         elif cmd == 'ack':
-            if self.error:
+            if self.fault:
                 self.acked.set()
-                self.say('Da xac nhan xu ly loi')
+                self.say('Da xac nhan xu ly su co')
+        elif cmd == 'estop':
+            self.trigger_fault('dung_khan', 'nguoi van hanh bam DUNG KHAN', resumable=True)
+        elif cmd == 'shelf' and len(p) > 2:
+            # Nguoi dat lai ke vao o (vd sau khi ke roi): cap nhat vi tri trong CSDL
+            shelf, slot = p[1], p[2]
+            if slot not in self.slots:
+                self.say(f'Khong co o "{slot}"')
+                return
+            with self.lock:
+                taken = self.db.execute('SELECT name FROM shelves WHERE slot=? AND name<>?', (slot, shelf)).fetchone()
+                if taken:
+                    self.say(f'O {slot} dang co {taken[0]}')
+                    return
+                self.db.execute('UPDATE shelves SET slot=? WHERE name=?', (slot, shelf))
+                self.db.commit()
+            self.say(f'{shelf} dat o {slot}')
         else:
-            self.say(f'Lenh khong hieu: "{msg.data}". Dung: add | cancel | confirm | pause | resume | ack')
+            self.say(f'Lenh khong hieu: "{msg.data}". Dung: add | cancel | confirm | pause | resume | ack | estop | shelf')
         self.publish_state()
 
     # ---------- action (chay trong worker thread, executor spin o thread khac) ----------
@@ -272,16 +321,74 @@ class OrderManager(Node):
         return True
 
     def action(self, client, goal, timeout):
+        """Gui goal, cho ket qua. Su co (self.fault) xay ra trong luc cho -> giam sat da huy goal -> Fault."""
+        if self.fault:
+            raise Fault(**self.fault)
         if not client.wait_for_server(timeout_sec=10.0):
             raise OrderError('action server khong san sang')
-        fut = client.send_goal_async(goal)
+        # Nav2 tu hoi phuc (xoa costmap, quay, cho, lui; toi 6 lan) truoc khi bao loi -> co the mat hang phut
+        # ma khong ai biet xe dang ket. Feedback number_of_recoveries tang = bao dong ngay (REPORT.md 4.13).
+        # Nhung Nav2 con co the KHONG loi ma di vong mai (lap duong qua phan vat can lidar chua thay):
+        # theo doi tien do distance_remaining, dung tien > stall_alarm_s thi canh bao, > blocked_wait_s
+        # thi huy goal va bao su co "duong bi chan" cho nguoi.
+        recov = {'n': 0, 'alarm': False, 'best': float('inf'), 't': time.time(), 'stall': False}
+        target = None
+        if isinstance(goal, NavigateToPose.Goal):
+            target = (goal.pose.pose.position.x, goal.pose.pose.position.y)
+        elif isinstance(goal, NavigateThroughPoses.Goal) and goal.poses:
+            target = (goal.poses[-1].pose.position.x, goal.poses[-1].pose.position.y)
+
+        def on_feedback(msg):
+            fb = msg.feedback
+            n = getattr(fb, 'number_of_recoveries', 0)
+            if n > recov['n']:
+                recov['n'], recov['alarm'] = n, True
+                self.alarm = f'Nav2 dang hoi phuc (lan {n}): co the duong bi chan'
+                self.say(self.alarm)
+                self.publish_state()
+            # Tien do = khoang cach thang tu xe (current_pose) toi dich cuoi. distance_remaining cua
+            # NavigateThroughPoses khong giam deu (co luc = 0) -> bao "ket" nham khi xe van chay (REPORT 4.13)
+            p = getattr(fb, 'current_pose', None)
+            if p is not None and target is not None:
+                d = math.hypot(p.pose.position.x - target[0], p.pose.position.y - target[1])
+                if d < recov['best'] - 0.3:
+                    recov['best'], recov['t'] = d, time.time()
+
+        fut = client.send_goal_async(goal, feedback_callback=on_feedback)
         if not self.wait_future(fut, 10.0) or not fut.result().accepted:
             return False, None
         handle = fut.result()
-        res = handle.get_result_async()
-        if not self.wait_future(res, timeout):
-            handle.cancel_goal_async()
-            return False, None
+        with self.lock:
+            self.active.append(handle)
+        try:
+            res = handle.get_result_async()
+            t0 = time.time()
+            nav = isinstance(goal, (NavigateToPose.Goal, NavigateThroughPoses.Goal))
+            while not res.done():
+                if time.time() - t0 > timeout:
+                    handle.cancel_goal_async()
+                    return False, None
+                stalled = time.time() - recov['t']
+                if nav and stalled > self.stall_alarm_s and not recov['stall']:
+                    recov['stall'] = recov['alarm'] = True
+                    self.alarm = f'xe khong tien ve dich {stalled:.0f} s: co the duong bi chan'
+                    self.say(self.alarm)
+                    self.publish_state()
+                if nav and stalled > self.blocked_wait_s:
+                    self.alarm = None
+                    # trigger_fault gan self.fault (de lenh "ack" duoc nhan), huy goal, van toc 0
+                    self.trigger_fault('duong_bi_chan', f'xe khong tien ve dich qua {self.blocked_wait_s:.0f} s, '
+                                       'can nguoi don duong', resumable=True)
+                    raise Fault(**self.fault)
+                time.sleep(0.1)
+        finally:
+            with self.lock:
+                if handle in self.active:
+                    self.active.remove(handle)
+            if recov['alarm'] and self.alarm and self.alarm.startswith('Nav2 dang hoi phuc'):
+                self.alarm = None
+        if self.fault:
+            raise Fault(**self.fault)
         return res.result().status == GoalStatus.STATUS_SUCCEEDED, res.result().result
 
     def pose(self, x, y, yaw):
@@ -297,17 +404,80 @@ class OrderManager(Node):
                 c.call_async(ClearEntireCostmap.Request())
         time.sleep(1.0)
 
-    def retry(self, name, fn):
-        """Chay fn() -> (ok, info); loi thi xoa costmap thu lai self.retries lan, van loi -> OrderError."""
+    # ---------- su co ----------
+    def trigger_fault(self, kind, msg, resumable):
+        """Dung xe ngay: huy moi action dang chay, gui van toc 0. Buoc dang chay se nem Fault."""
+        with self.lock:
+            if self.fault:
+                return
+            self.fault = {'kind': kind, 'msg': msg, 'resumable': resumable}
+            handles = list(self.active)
+        for h in handles:
+            h.cancel_goal_async()
+        for _ in range(5):
+            self.cmd_vel_pub.publish(Twist())
+        self.say(f'SU CO ({kind}): {msg}. Xe dung, cho nguoi xu ly roi bam "Da xu ly" (ack).')
+        self.publish_state()
+
+    def wait_ack(self):
+        self.acked.clear()
+        self.acked.wait()
+        with self.lock:
+            self.fault = None
+        self.alarm = None
+        self.publish_state()
+
+    def monitor(self):
+        """5 Hz: phat hien su co trong luc chay don (chay o thread cua executor)."""
+        o = self.current
+        if not o or self.fault:
+            self.drop_since = None
+            return
+        if self.lift_state == 'error':
+            self.trigger_fault('co_cau_nang', 'co cau nang bao loi', resumable=False)
+            return
+        # Roi ke: dang cho ma mat tin hieu "co ke" > 1 s (ngoai luc dang nang / ha)
+        if o.get('carrying') and self.step not in ('lift', 'lower') and self.has_load is False:
+            self.drop_since = self.drop_since or time.time()
+            if time.time() - self.drop_since > 1.0:
+                self.trigger_fault('mat_ke', f'mat ke {o["shelf"]} khi dang cho', resumable=False)
+        else:
+            self.drop_since = None
+
+    def retry(self, name, fn, nav=False):
+        """Chay fn() -> (ok, info). Loi: xoa costmap thu lai self.retries lan. Chang di chuyen (nav) van loi
+        thi coi la duong bi chan: bao dong, cho blocked_retry_s roi thu lai, toi da blocked_wait_s; van chan
+        -> su co can nguoi (Fault tiep tuc duoc). Chang khac van loi -> OrderError."""
+        label = STEP_NAME.get(name, name)
         for attempt in range(self.retries + 1):
             ok, info = fn()
             if ok:
                 return
-            self.say(f'{STEP_NAME.get(name, name)} loi{": " + info if info else ""}'
+            self.say(f'{label} loi{": " + info if info else ""}'
                      + (', xoa costmap va thu lai' if attempt < self.retries else ''))
             if attempt < self.retries:
                 self.clear_costmaps()
-        raise OrderError(f'{STEP_NAME.get(name, name)} that bai')
+        if not nav:
+            raise OrderError(f'{label} that bai')
+        t0 = time.time()
+        while time.time() - t0 < self.blocked_wait_s:
+            self.alarm = f'{label}: duong bi chan, cho {self.blocked_retry_s:.0f} s roi thu lai'
+            self.say(self.alarm)
+            self.publish_state()
+            for _ in range(int(self.blocked_retry_s * 10)):
+                if self.fault:
+                    raise Fault(**self.fault)
+                time.sleep(0.1)
+            self.clear_costmaps()
+            ok, info = fn()
+            if ok:
+                self.alarm = None
+                self.say(f'{label}: het chan, di tiep')
+                return
+        self.alarm = None
+        self.trigger_fault('duong_bi_chan', f'{label}: duong bi chan qua {self.blocked_wait_s:.0f} s, '
+                           'can nguoi don duong', resumable=True)
+        raise Fault(**self.fault)
 
     # ---------- cac buoc ----------
     def go_staging(self, slot):
@@ -347,6 +517,8 @@ class OrderManager(Node):
         t0 = time.time()
         time.sleep(0.3)
         while time.time() - t0 < 10.0:
+            if self.fault:
+                raise Fault(**self.fault)
             if (self.lift_state, self.has_load) == want:
                 return True, ''
             if self.lift_state == 'error':
@@ -365,46 +537,77 @@ class OrderManager(Node):
         self.step = step
         self.publish_state()
 
+    def wait_confirm(self, o):
+        self.say(f'Don #{o["id"]}: {o["shelf"]} da toi {o["station"]}, cho nguoi lay hang (bam xac nhan)')
+        self.confirmed.clear()
+        t0 = time.time()
+        while not self.confirmed.wait(0.5):
+            if self.fault:
+                raise Fault(**self.fault)
+            if self.auto_confirm_s > 0 and time.time() - t0 > self.auto_confirm_s:
+                self.say(f'Tu xac nhan sau {self.auto_confirm_s:.0f} s (auto_confirm_s)')
+                break
+
     def run_order(self, o):
+        """Chay don theo danh sach buoc. Su co tiep tuc duoc (dung khan, duong bi chan): cho nguoi bam
+        "Da xu ly" roi lam lai DUNG buoc dang do. Su co khong tiep tuc duoc (roi ke, co cau nang) -> Fault len worker."""
         oid, shelf, station = o['id'], o['shelf'], o['station']
         slot = self.shelf_slot(shelf)
         self.set_order(oid, status='running', started=time.time())
         self.say(f'Don #{oid}: lay {shelf} (o {slot}) -> {station}')
-        steps_before_lift = [('staging', lambda: self.go_staging(slot)),
-                             ('dock', lambda: self.dock_into(slot, detect=True))]
-        for name, fn in steps_before_lift:
-            if oid in self.cancel_requested:
+
+        def lift_up():
+            ok, info = self.lift('up')
+            if not ok:
+                raise OrderError(f'nang ke that bai: {info}')
+            o['carrying'] = True
+            # payload_manager xoa costmap khi mat nang len het; cho costmap cap nhat lai (scan da loc chan
+            # ke) roi moi lui ra, khong thi doi khi con "chan ke ma" -> docking bao va cham
+            time.sleep(1.5)
+
+        def lower():
+            ok, info = self.lift('down')
+            if not ok:
+                self.trigger_fault('co_cau_nang', f'ha ke that bai: {info}', resumable=False)
+                raise Fault(**self.fault)
+            o['carrying'] = False
+
+        steps = [
+            ('staging', lambda: self.retry('staging', lambda: self.go_staging(slot), nav=True)),
+            ('dock', lambda: self.retry('dock', lambda: self.dock_into(slot, detect=True))),
+            ('lift', lift_up),
+            ('undock', lambda: self.retry('undock', lambda: self.undock_from('shelf_dock'))),
+            ('to_station', lambda: self.retry('to_station', lambda: self.go_station(station), nav=True)),
+            ('wait_confirm', lambda: self.wait_confirm(o)),
+            ('return_staging', lambda: self.retry('return_staging', lambda: self.go_staging(slot), nav=True)),
+            ('return_dock', lambda: self.retry('return_dock', lambda: self.dock_into(slot, detect=False))),
+            ('lower', lower),
+            ('return_undock', lambda: self.retry('return_undock', self.leave_slot)),
+        ]
+        # Tu buoc nang ke tro di (ca sau khi da ha ke, xe con duoi gam ke) loi nao cung KHONG duoc tra don
+        # ve hang doi / chay lai tu dau: thanh su co cho nguoi, lam lai dung buoc (REPORT.md 4.13)
+        lift_index = [name for name, _ in steps].index('lift')
+        i = 0
+        while i < len(steps):
+            name, fn = steps[i]
+            if name in ('staging', 'dock') and oid in self.cancel_requested:
                 raise OrderError('nguoi dung huy')
             self.set_step(name)
-            self.retry(name, fn)
-        self.set_step('lift')
-        ok, info = self.lift('up')
-        if not ok:
-            raise OrderError(f'nang ke that bai: {info}')
-        o['carrying'] = True
-        for name, fn in [('undock', lambda: self.undock_from('shelf_dock')),
-                         ('to_station', lambda: self.go_station(station))]:
-            self.set_step(name)
-            self.retry(name, fn)
-        self.set_step('wait_confirm')
-        self.say(f'Don #{oid}: {shelf} da toi {station}, cho nguoi lay hang (bam xac nhan)')
-        self.confirmed.clear()
-        t0 = time.time()
-        while not self.confirmed.wait(0.5):
-            if self.auto_confirm_s > 0 and time.time() - t0 > self.auto_confirm_s:
-                self.say(f'Tu xac nhan sau {self.auto_confirm_s:.0f} s (auto_confirm_s)')
-                break
-        for name, fn in [('return_staging', lambda: self.go_staging(slot)),
-                         ('return_dock', lambda: self.dock_into(slot, detect=False))]:
-            self.set_step(name)
-            self.retry(name, fn)
-        self.set_step('lower')
-        ok, info = self.lift('down')
-        if not ok:
-            raise OrderError(f'ha ke that bai: {info}')
-        o['carrying'] = False
-        self.set_step('return_undock')
-        self.retry('return_undock', lambda: self.undock_from('slot_dock'))
+            try:
+                try:
+                    fn()
+                except OrderError as e:
+                    if i < lift_index:
+                        raise          # chua nang ke: worker tra don ve hang doi
+                    where = f'dang cho {shelf}' if o.get('carrying') else f'xe con o gam {shelf}'
+                    self.trigger_fault('buoc_loi_sau_khi_nang', f'{e} ({where})', resumable=True)
+                    raise Fault(**self.fault)
+                i += 1
+            except Fault as f:
+                if not f.resumable:
+                    raise
+                self.wait_ack()
+                self.say(f'Don #{oid}: tiep tuc buoc "{STEP_NAME.get(name, name)}"')
         with self.lock:
             dt = time.time() - self.db.execute('SELECT started FROM orders WHERE id=?', (oid,)).fetchone()[0]
         self.set_order(oid, status='done', finished=time.time())
@@ -434,7 +637,28 @@ class OrderManager(Node):
         g.navigate_to_staging_pose = False
         ok, r = self.action(self.dock, g, 120.0)
         ok = ok and r is not None and r.success
+        if not ok:
+            # Xe co the dang sat khoi tiep diem: lui thang ra truoc, quay tai cho o day se quet vao khoi
+            # (lan thu f8: nhan don ngay sau khi vao tram loi, xe ket o day 60 s - REPORT.md 4.13)
+            self.back_up(0.5)
         return ok, '' if ok or r is None else f'error_code {r.error_code}'
+
+    def leave_slot(self):
+        """Lui ra khoi gam sau khi ha ke. UndockRobot loi (ke vua dat lech, chan ke sat footprint -> du bao va
+        cham) thi lui thang 1 m bang BackUp: duong lui la duong vua vao, khong quay."""
+        ok, info = self.undock_from('slot_dock')
+        if ok:
+            return True, ''
+        ok2 = self.back_up(1.0)
+        return ok2, f'undock loi ({info}), lui thang 1 m: {"OK" if ok2 else "loi"}'
+
+    def back_up(self, dist):
+        g = BackUp.Goal()
+        g.target = Point(x=float(dist))
+        g.speed = 0.15
+        g.time_allowance.sec = 15
+        ok, _ = self.action(self.backup, g, 30.0)
+        return ok
 
     def leave_charger(self):
         """Roi tram sac. UndockRobot loi (vd xe bat khoi tiep diem > docking_threshold: "Robot is not in
@@ -442,11 +666,7 @@ class OrderManager(Node):
         ok, info = self.undock_from('simple_charging_dock')
         if ok:
             return True, ''
-        g = BackUp.Goal()
-        g.target = Point(x=0.5)
-        g.speed = 0.15
-        g.time_allowance.sec = 15
-        ok2, _ = self.action(self.backup, g, 30.0)
+        ok2 = self.back_up(0.5)
         return ok2, f'undock loi ({info}), lui thang 0.5 m: {"OK" if ok2 else "loi"}'
 
     def nav2_active(self):
@@ -482,10 +702,16 @@ class OrderManager(Node):
         while rclpy.ok():
             self.update_charge_hold()
             o = None if (self.paused or self.charge_hold) else self.next_order()
+            if self.fault:          # su co luc ranh (vd dung khan khi dang vao tram sac)
+                self.wait_ack()
+                continue
             if o is None:
                 if not docked:
                     self.set_step('to_charger')
-                    ok, info = self.go_charger()
+                    try:
+                        ok, info = self.go_charger()
+                    except Fault:
+                        continue
                     docked = ok
                     if not ok:
                         self.say(f'Vao tram sac loi{": " + info if info else ""}, thu lai sau')
@@ -495,7 +721,10 @@ class OrderManager(Node):
                 continue
             if docked:
                 self.set_step('leave_charger')
-                ok, info = self.leave_charger()
+                try:
+                    ok, info = self.leave_charger()
+                except Fault:
+                    continue
                 if info:
                     self.say(f'Roi tram sac: {info}')
                 if not ok:
@@ -505,18 +734,26 @@ class OrderManager(Node):
             self.current = o
             try:
                 self.run_order(o)
+            except Fault as f:
+                # Su co khong tiep tuc duoc (roi ke, co cau nang): don loi, ke chua ro vi tri neu dang cho
+                self.set_order(o['id'], status='failed', finished=time.time(), error=f.msg)
+                if o.get('carrying') or f.kind == 'mat_ke':
+                    with self.lock:
+                        self.db.execute('UPDATE shelves SET slot=NULL WHERE name=?', (o['shelf'],))
+                        self.db.commit()
+                    self.say(f'{o["shelf"]} chua ro vi tri: dat lai ke roi gui "shelf {o["shelf"]} <o>"')
+                o['carrying'] = False
+                self.wait_ack()
             except OrderError as e:
-                carrying = o.get('carrying', False)
-                self.set_order(o['id'], status='failed', finished=time.time(), error=str(e))
-                self.say(f'Don #{o["id"]} LOI: {e}')
-                if carrying:
-                    # Dang cho ke ma loi: khong tu xu ly (giai doan 5), xe dung cho nguoi
-                    self.error = f'don #{o["id"]}: {e} (dang cho {o["shelf"]})'
-                    self.say(f'XE DUNG: {self.error}. Xu ly xong gui "ack".')
-                    self.publish_state()
-                    self.acked.clear()
-                    self.acked.wait()
-                    self.error = None
+                # Loi truoc khi nang ke (xe khong cho gi): tra don ve hang doi, toi da max_attempts lan
+                with self.lock:
+                    n = self.db.execute('SELECT attempts FROM orders WHERE id=?', (o['id'],)).fetchone()[0] or 0
+                if n + 1 < self.max_attempts and 'huy' not in str(e):
+                    self.set_order(o['id'], status='pending', attempts=n + 1, error=str(e))
+                    self.say(f'Don #{o["id"]} loi ({e}), tra ve hang doi (lan {n + 1}/{self.max_attempts})')
+                else:
+                    self.set_order(o['id'], status='failed', finished=time.time(), error=str(e), attempts=n + 1)
+                    self.say(f'Don #{o["id"]} LOI: {e}')
             finally:
                 self.cancel_requested.discard(o['id'])
                 self.current = None
