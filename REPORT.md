@@ -60,6 +60,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 07/10/2026 | Bước 5: nhiệm vụ kho (trạm sạc, khu nhận hàng, kịch bản + lệnh), video demo | #9 |
 | 07–08/10/2026 | Sửa vấn đề còn mở: AMCL lệch ở khu phía đông, "collision ahead" trong lối hẹp | #10 |
 | 08/10/2026 | Web dashboard giao nhiệm vụ qua trình duyệt | #11 |
+| 08/10/2026 | Giảm tải mô phỏng: bước vật lý 1 ms → 3 ms | #12 |
 
 ---
 
@@ -300,6 +301,45 @@ Các sự cố gặp phải, theo thứ tự:
   - Khi số đo của phần mới xấu bất thường, đo luôn phần cũ và một trường hợp rỗng để so; ở đây lỗi không nằm ở code mới.
   - Câu hỏi "nên làm A hay B" là xin ý kiến, không phải yêu cầu làm.
 
+### 4.8. Giảm tải mô phỏng: bước vật lý 1 ms → 3 ms (PR #12)
+- **Mục tiêu:** kiểm phát hiện ở mục 4.7: mỗi node Python dùng thời gian mô phỏng tốn 50–80 % một nhân CPU vì `/clock`. Xem đây có phải nguyên nhân của việc thỉnh thoảng khựng khoảng 1 s (vấn đề còn mở 1) không.
+- **Cách làm:**
+  - Theo bài học ở bước 3, xem các world mẫu chính thức trước khi tự chỉnh. Cả 3 world mẫu của Nav2 cài sẵn trong Jazzy (`nav2_minimal_tb3_sim/tb3_sandbox`, `nav2_minimal_tb4_sim/depot` và `warehouse`) đều dùng `max_step_size` **0.003 s**.
+  - World của đồ án dùng 0.001 s, chỉ là giá trị có sẵn từ lúc dựng world, không có lý do ghi lại.
+  - Gazebo phát `/clock` mỗi bước vật lý: 1000 tin/s với bước 1 ms, 333 tin/s với bước 3 ms. Các cảm biến (lidar 7 Hz, IMU 100 Hz, odom 30 Hz) đều chậm hơn nhiều so với 333 Hz.
+- **Đo:**
+  - Bài thử: nhiệm vụ `giao_hang` chạy tự động 2 lượt, headless.
+  - Lấy mẫu `top` 10 s và RTF từ `/stats` của Gazebo.
+  - Một node riêng so `/odom` (EKF) và `/amcl_pose` với `/ground_truth` theo thời gian của từng tin.
+  - Hai cấu hình chạy xen kẽ trong cùng buổi (1 ms → 3 ms → 1 ms), để loại trừ khả năng máy tình cờ rảnh hơn ở một cấu hình.
+
+  | | Bước 1 ms (5 lần, 30 chặng) | Bước 3 ms (4 lần, 24 chặng) |
+  |---|---|---|
+  | Chặng thành công | **9/30** (các lần: 2+0, 1+0, 0+0, 3+3, 0+0 trên 3+3) | **24/24** |
+  | Một lượt `giao_hang` (khi thành công) | 61.6 – 69.8 s | 60.2 – 61.4 s |
+  | RTF | 0.14 – 1.4, dao động mạnh | 0.99 – 1.01 (một lần có 2 mẫu 0.56, 0.65) |
+  | Tổng CPU cả hệ thống mô phỏng | 670 – 808 % một nhân | 380 – 475 % |
+  | Container Nav2 / EKF | 300 – 895 % / 17 – 111 % | 178 – 200 % / 14 – 16 % |
+  | Mỗi node Python (`use_sim_time`) | 38 – 75 % | 30 – 48 % |
+  | Cảnh báo "Control loop missed" | 11 – 152 mỗi lần | 0 – 1 |
+  | Sai số odom EKF (cuối / quãng đường) | — | 0.20 m / 36.5 m (0.6 %) |
+  | Sai số AMCL (90 % thời gian / lớn nhất) | — (PR #10: lớn nhất 0.14–0.16 m) | 0.062 / 0.080 m |
+
+  Khi thất bại ở bước 1 ms, log báo TF `odom → base_footprint` trễ 0.5–4 s ("Lookup would require extrapolation into the future", "Transform data too old") và Nav2 huỷ đích. Đây chính là hiện tượng "khựng", nhưng nặng hơn nhiều so với hôm trước.
+- **Sai lầm trong quá trình đo:**
+
+  | # | Sai lầm | Phát hiện thế nào | Sửa |
+  |---|---|---|---|
+  | 1 | Kết luận lần đo 1 ms đầu tiên bị nhiễu vì "unattended-upgrades ăn 98 % CPU" | Đo riêng tiến trình đó: tổng cộng chỉ 0.09 s CPU từ lúc bật máy. Lệnh `awk` tách cột của `top` bị lệch | Rút lại kết luận; in nguyên dòng `top`, không tách cột |
+  | 2 | Node đo báo odom sai 1.06 m, AMCL sai 0.91 m ở bước 3 ms, trong khi thời gian chặng vẫn y như cũ | Sai số gần như không đổi suốt lần chạy, giống độ lệch gốc toạ độ: node lấy mẫu `/ground_truth` đầu tiên làm gốc, mà node chỉ bật sau khi xe đã bắt đầu chạy | Lấy gốc là vị trí xuất phát đã biết (−4.5, 0), chạy lại cả hai cấu hình |
+  | 3 | Một lần chạy 3 ms Nav2 không bao giờ sẵn sàng | Log: container nạp xong `map_server`, `amcl`, `controller_server` nhưng "failed to send response to /nav2_container/_container/load_node (timeout)", launch chờ mãi | Không liên quan tới bước vật lý; không tính vào bảng, ghi thành vấn đề còn mở |
+
+- **Cách sửa:** `agv_gazebo/worlds/warehouse.sdf`: `max_step_size` 0.001 → 0.003, ghi lý do trong file.
+- **Chưa kiểm lại:** các số đo của bước 1 (độ trôi odom bánh xe so với vị trí thật) chưa đo lại với bước 3 ms. Các số trên là odom sau EKF.
+- **Bài học:**
+  - Mặc định trong file mẫu (world 1 ms) cũng phải đối chiếu với dự án tham khảo như tham số thuật toán; một con số không ai chọn có thể quyết định cả hệ thống có quá tải hay không.
+  - Kết quả lạ của công cụ đo (độ lệch không đổi, tiến trình "ăn" CPU) phải kiểm lại công cụ trước khi tin.
+
 ---
 
 ## 5. Tổng hợp sai lầm và bài học
@@ -319,15 +359,18 @@ Các sự cố gặp phải, theo thứ tự:
 | Định vị | Để nguyên tham số AMCL mặc định dù xe quay tại chỗ nhiều và odom tốt hơn giả định | Đo độ nhiễu odom thật, chỉnh `alpha` theo số đo; kiểm giả thuyết bằng phép đo trước khi sửa |
 | Dashboard | Bắt tay vào code khi mới được hỏi ý kiến | Hỏi "nên làm gì" thì trả lời và lập kế hoạch, chưa sửa code |
 | Dashboard | Tưởng node mới tốn CPU do code của nó | Đo cả node cũ và node rỗng để tìm phần chung (`/clock` 1 kHz) |
+| Mô phỏng | Để nguyên bước vật lý 1 ms có sẵn trong world | Đối chiếu world mẫu (Nav2 dùng 3 ms); bước nhỏ không có nghĩa là tốt hơn nếu máy không theo kịp |
+| Kiểm thử | Đổ lỗi cho tiến trình nền và tin số đo lệch gốc toạ độ | Kiểm lại công cụ đo khi số liệu lạ |
 
 ## 6. Vấn đề còn mở
 Đã giải quyết (xem 4.6): AMCL lệch ở khu phía đông; "collision ahead" trong lối hẹp (từ 24 lần một chặng xuống 0–4 lần một nhiệm vụ).
 
-1. **Hệ thống đôi khi khựng khoảng 1 s** khi máy tải nặng (vòng điều khiển tụt xuống 9.6 Hz, TF cũ). Mới gặp trong mô phỏng trên WSL; cơ chế thử lại xử lý được. Cần theo dõi khi chạy trên Pi 4 (yếu hơn PC).
+1. **Hệ thống đôi khi khựng khoảng 1 s** khi máy tải nặng (vòng điều khiển tụt xuống 9.6 Hz, TF cũ). **Trong mô phỏng đã giảm hẳn** nhờ bước vật lý 3 ms (mục 4.8: "Control loop missed" 0–1 mỗi lần so với 11–152). Vẫn cần theo dõi khi chạy trên Pi 4 (yếu hơn PC).
 2. **Vùng chết của động cơ:** xe không đi chậm hơn 0.34 m/s và không quay chậm hơn 1.5 rad/s. Nên cải thiện điều khiển tốc độ thấp trên STM32 để hạ `SPD_RPM_MIN`.
 3. **Phần cứng chưa làm:** mở rộng 4 bánh, node cầu nối UART Pi ↔ STM32 (phải có giữ bán kính cua + covariance cho odom), YDLidar, BNO055, INA226.
 4. **Kích thước xe** (track, wheelbase) vẫn là ước lượng, cần đo xe thật.
-5. **Node Python trong mô phỏng tốn nhiều CPU vì `/clock` 1 kHz:** `mission_server` 77 %, node rỗng 53 %. Chỉ có trong mô phỏng. **Giả thuyết chưa kiểm chứng:** đây có thể là một phần nguyên nhân của việc khựng khoảng 1 s (vấn đề 1).
+5. **Node Python trong mô phỏng tốn CPU vì `/clock`:** đã giảm từ 38–75 % xuống 30–48 % mỗi node nhờ bước 3 ms (mục 4.8); vẫn còn vì `/clock` 333 tin/s. Chỉ có trong mô phỏng.
+7. **Nav2 thỉnh thoảng không khởi động xong:** container nạp node nhưng phản hồi dịch vụ `load_node` cho launch bị timeout, launch chờ mãi (1/10 lần chạy ngày 08/10). Chưa tìm nguyên nhân; khi gặp thì chạy lại.
 6. **Dashboard chưa có đăng nhập:** chỉ mở trong LAN / Tailscale.
 
 ## 7. Cách ghi tiếp tài liệu này
