@@ -6,7 +6,7 @@ Vi du:
   ros2 launch agv_gazebo sim.launch.py headless:=true  # chi chay server, khong mo cua so nao
   ros2 launch agv_gazebo sim.launch.py slam:=true      # them slam_toolbox, RViz hien ban do
   ros2 launch agv_gazebo sim.launch.py nav:=true       # Nav2 tren ban do da lap, bam "Nav2 Goal" de xe tu di
-  ros2 launch agv_gazebo sim.launch.py nav:=true mission:=giao_hang   # + chay nhiem vu kho tu dong
+  ros2 launch agv_gazebo sim.launch.py nav:=true mission:=tuan_tra    # + chay nhiem vu kho tu dong
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
@@ -76,6 +76,13 @@ def generate_launch_description():
         parameters=[{'rpm_min': ParameterValue(LaunchConfiguration('rpm_min'), value_type=float),
                      'use_sim_time': True}],
         output='screen')
+
+    # Co cau nang (mat nang + cam bien co ke): cung topic /lift/* voi cau noi STM32 cua xe that
+    lift = Node(package='agv_gazebo', executable='lift_sim.py', output='screen')
+
+    # Loc scan (than xe, chan ke dang cho) + doi footprint / toc do theo tai: dung chung voi xe that.
+    # Khong dung use_sim_time (giu nguyen stamp cua scan, khong can doc /clock).
+    payload_manager = Node(package='agv_navigation', executable='payload_manager.py', output='screen')
 
     # Odom banh xe cua Gazebo khong co covariance -> them vao, gui /wheel/odom nhu xe that
     wheel_odom = Node(
@@ -162,6 +169,8 @@ def generate_launch_description():
         spawn,
         bridge,
         motor_model,
+        lift,
+        payload_manager,
         wheel_odom,
         ekf,
         slam_launch,
