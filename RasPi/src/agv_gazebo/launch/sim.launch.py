@@ -117,7 +117,8 @@ def generate_launch_description():
     mission_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([FindPackageShare('agv_mission'), 'launch', 'mission.launch.py'])),
-        launch_arguments={'use_sim_time': 'true'}.items(),
+        # World dat lai ke vao o goc moi lan chay -> order_manager nap lai vi tri ke tu shelves.yaml
+        launch_arguments={'use_sim_time': 'true', 'reset_shelves': 'true'}.items(),
         condition=IfCondition(nav))
 
     # RViz: SLAM -> nhin tu tren xuong, hien ban do; Nav2 -> nav.rviz (goc: cau hinh mac dinh cua Nav2,
