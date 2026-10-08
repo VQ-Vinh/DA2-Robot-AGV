@@ -7,7 +7,7 @@ install(DIRECTORY launch worlds config
   DESTINATION share/${PROJECT_NAME})
 
 install(PROGRAMS scripts/motor_model.py scripts/odom_drift.py scripts/wheel_odom.py
-  scripts/drive_route.py scripts/lift_sim.py scripts/shelf_transport_test.py
+  scripts/drive_route.py scripts/lift_sim.py scripts/shelf_transport_test.py scripts/battery_sim.py
   DESTINATION lib/${PROJECT_NAME})
 
 ament_package()
