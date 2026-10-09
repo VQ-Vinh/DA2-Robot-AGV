@@ -67,6 +67,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 08/10/2026 | Kho Kiva, giai đoạn 4: pin và tự về sạc | #16 |
 | 08/10/2026 | Kho Kiva, giai đoạn 5: xử lý sự cố | #17 |
 | 09/10/2026 | Xe vòng vòng / trả kệ lệch: vùng chết động cơ, kiểm tra tư thế, khoá kệ | #17 |
+| 09/10/2026 | Lidar lệch bản đồ (bias con quay), cửa sổ Gazebo crash (driver WSL) | #17 |
 
 ---
 
@@ -560,6 +561,35 @@ Các sự cố gặp phải, theo thứ tự:
 - **Còn lại:** tới staging vẫn quay thừa khoảng 300° (TB) vì đường đi qua điểm trước staging có góc gấp. Một lần chui gầm vẫn quay thừa 1251° (lần thử lại của docking). Gốc rễ là vùng chết, cách sửa thật nằm ở firmware (mục 6).
 - **Bài học:** khi bộ chấp hành có vùng chết, mọi khâu "lệnh nhỏ dần về 0" (giảm tốc gần đích, làm mượt vận tốc, dung sai hẹp) đều biến thành vọt lố. Phải đo quỹ đạo thật theo từng bước thay vì chỉ nhìn đơn có xong không, vì 8/8 đơn xong vẫn che được một bước quay 4000°.
 
+### 4.15. Lidar lệch bản đồ khi xe đứng yên; cửa sổ Gazebo không mở (PR #17)
+- **Phát hiện:** người dùng chụp RViz: các chấm lidar lệch khỏi tường trên bản đồ. Lỗi cũ thứ hai: chạy `sim.launch.py nav:=true` thì cửa sổ Gazebo đôi khi không mở.
+- **Lidar lệch: tìm nguyên nhân.**
+  - So vị trí AMCL (TF `map → base_link`) với vị trí thật trên chính mô phỏng đang chạy: xe đứng yên ở trạm sạc nhưng localization lệch **30.8 cm, −11.2°**. Góc odom vẫn tăng đều (−18.7° → −19.0° trong 16 s) dù xe không chạy.
+  - Đo vận tốc quay khi đứng yên: odom bánh = 0, IMU −0.000464 rad/s, EKF −0.000409 rad/s. IMU mô phỏng được cấu hình có bias con quay (`bias_mean` 0.0005 rad/s, cố ý giống IMU thật), và EKF cộng bias này vào góc yaw. AMCL chỉ cập nhật khi odom đổi quá `update_min_a`/`update_min_d`, nên khi xe đứng yên bản đồ và lidar lệch dần.
+  - **Đoán sai và các lần sửa bỏ đi:**
+    1. Khi hai bánh đứng yên, đặt phương sai tốc độ quay của odom bánh rất nhỏ (1e-6, rồi 1e-9), với lập luận xe skid-steer không thể quay khi bánh không lăn. Không có tác dụng: vận tốc quay của EKF chỉ giảm một nửa (0.000207 so với IMU 0.000474), góc vẫn trôi ~1.3°/phút. Nguyên nhân: giữa hai tin odom bánh (20 Hz), nhiễu quá trình của EKF làm phương sai tăng lại, và các tin IMU (71 Hz) lại kéo trạng thái theo.
+    2. Hạ `update_min_a` của AMCL từ 0.2 xuống 0.05 rad, để lidar sửa lại mỗi khi odom trôi 3°. Không có tác dụng: đứng yên 10 phút thì odom trôi −24.4° và AMCL lệch −24.7°, không sửa chút nào. AMCL tin odom rất cao (`alpha` 0.05, mục 4.6), nên các hạt quay theo odom và lidar không kéo lại được. Đã trả về 0.2.
+- **Lidar lệch: cách sửa.** Node mới `agv_localization/imu_bias.py`, dùng chung cho mô phỏng và xe thật: `/imu/raw → /imu`. Khi `/wheel/odom` báo bánh đứng yên quá 1 s, mọi tốc độ quay con quay đo được đều là bias. Node lấy trung bình trượt (hằng số thời gian 5 s) và trừ vào mọi mẫu. Bridge mô phỏng đổi `/imu` thành `/imu/raw`; cầu nối IMU của xe thật cũng phải phát `/imu/raw`.
+
+  | Xe đứng yên ở trạm sạc | Odom yaw trôi | Localization lệch |
+  |---|---|---|
+  | Trước (i3, 300 s) | −2.39° (bias mỗi lần chạy khác nhau) | −2.5° |
+  | Trước (i4, 600 s) | **−24.4°** | **−24.7°** |
+  | Sau (i5, 300 s) | **+0.05°** | −0.2° |
+
+  Chạy lại 8 đơn (m9): 8/8 xong, TB 88 s. Localization (TF) khi xe chạy lệch lớn nhất 13 cm, phần lớn ≤ 10 cm.
+- **Sai lầm của công cụ đo:** ở mục 4.14, "AMCL sai max" ~0.3 m được coi là do `/amcl_pose` phát tin cũ, nhưng khi đó chưa kiểm chứng. Đã đổi `motion_test.py` sang đo bằng TF; khi xe chạy, sai số thật ≤ 13 cm.
+- **Sự cố phát sinh khi sửa (khoá kệ của mục 4.14):**
+  - Một lần chạy (m8) xe hoàn toàn không đi được. Vị trí thật đứng yên, còn odom tưởng xe đã lùi 1.5 m: bánh quay trượt vì xe vẫn còn dính vào 8 kệ. Lệnh mở khoá gửi một lần bằng `gz topic -p` có thể bị mất khi chưa kịp kết nối với plugin; lần m7 chạy được là do may.
+  - Sửa: `lift_sim` dùng publisher gz-transport thường trực (Python `gz.transport13`), đọc trạng thái thật của khớp `/shelf/<kệ>/state`, và mỗi giây gửi lại cho tới khi khớp. Lệnh khoá chỉ được gửi trong 3 s sau khi nâng, để không tự khoá lại một kệ đã bị gỡ (bài thử rơi kệ).
+  - Một lần (s3) xe vẫn không rời được trạm sạc dù các khớp đã báo `detached`: docking và BackUp báo vật cản ngay sau xe. Chạy lại không gặp lại. **Chưa tìm ra nguyên nhân.**
+  - Lần s4: hạ kệ xong mặt nâng dừng ở 2.0 mm, đúng bằng dung sai 0.002 m, nên phép so sánh không đạt và sau 5 s báo "cơ cấu nâng lỗi". Đã nới dung sai lên 4 mm (hành trình 30 mm).
+- **Cửa sổ Gazebo:**
+  - Tái hiện 4 lần chạy đầy đủ: cửa sổ chết **1/4 lần** (exit 139). Backtrace: segfault trong driver NVIDIA D3D12 của WSL (`driCreateNewScreen` → `libnvwgf2umx.so`) lúc tạo màn hình OpenGL, khi RViz cũng đang khởi tạo. Mở tay sau đó thì chạy bình thường.
+  - Đây là lỗi driver, không sửa được trong dự án. Launch giờ chạy thẳng `gz sim -g` trong một vòng lặp: chết vì segfault thì mở lại sau 3 s, tối đa 4 lần; người dùng tự đóng cửa sổ thì không mở lại. Thử 3 lần: một lần cửa sổ crash rồi tự mở lại được.
+- **Bài thử sự cố sau khi sửa (f12): 2/3.** Dừng khẩn và rơi kệ đạt. Tường chắn: có cảnh báo nhưng chưa thành sự cố trước khi gỡ tường (giống f10, vì xe men theo tường nên vẫn được tính là "đang tiến").
+- **Bài học:** mô phỏng có nhiễu và bias giống thật thì phải có bước bù giống thật (hiệu chỉnh bias con quay khi đứng yên). Và trước khi chỉnh tham số theo một giả thuyết, đo xem đại lượng trung gian (ở đây là vận tốc quay của EKF) có đổi đúng như dự đoán không.
+
 ---
 
 ## 5. Tổng hợp sai lầm và bài học
@@ -593,18 +623,21 @@ Các sự cố gặp phải, theo thứ tự:
 | Kiva | Tin "Docking was successful" là xe đã vào đúng ô | Tự kiểm tra tư thế trước khi nâng / hạ |
 | Kiva | Chỉ nhìn số đơn xong, không đo quỹ đạo | Đo góc quay thừa từng bước (8/8 đơn xong vẫn có bước quay 4000°) |
 | Kiva | Giải quyết vùng chết bằng quay tại chỗ chính xác | Đo trước: một lần Spin quay thừa ~30 deg, chỉ chỉnh được khi đang đi |
+| Định vị | Chỉnh covariance / ngưỡng AMCL để chữa trôi do bias con quay | Đo vận tốc quay của EKF trước; sửa tận gốc: ước lượng bias khi bánh đứng yên |
+| Mô phỏng | Gửi lệnh gz một lần rồi coi như xong | Đọc trạng thái thật và gửi lại tới khi khớp |
 
 ## 6. Vấn đề còn mở
 Đã giải quyết (xem 4.6): AMCL lệch ở khu phía đông; "collision ahead" trong lối hẹp (từ 24 lần một chặng xuống 0–4 lần một nhiệm vụ).
 
 1. **Hệ thống đôi khi khựng khoảng 1 s** khi máy tải nặng (vòng điều khiển tụt xuống 9.6 Hz, TF cũ). **Trong mô phỏng đã giảm hẳn** nhờ bước vật lý 3 ms (mục 4.8: "Control loop missed" 0–1 mỗi lần so với 11–152). Vẫn cần theo dõi khi chạy trên Pi 4 (yếu hơn PC).
 2. **Vùng chết của động cơ:** xe không đi chậm hơn 0.34 m/s và không quay chậm hơn 1.5 rad/s. Nên cải thiện điều khiển tốc độ thấp trên STM32 để hạ `SPD_RPM_MIN`. Đo ở mục 4.9: 50 RPM làm xe tới staging lệch góc ít hơn ~4 lần và đặt kệ chính xác hơn. Mục 4.14: đây là nguyên nhân chính khiến xe "vòng vòng". Tắt vùng chết thì góc quay thừa khi chui gầm giảm từ 627° xuống 4°; phần mềm mới chỉ giảm được một phần. Hướng thử: ở tốc độ thấp, firmware "đá" duty cao lúc khởi động rồi để PID giữ tốc độ, vì ma sát động nhỏ hơn ma sát tĩnh (chưa kiểm chứng trên xe thật).
-3. **Phần cứng chưa làm:** chốt định vị trên mặt nâng (kệ không trượt khi xe quay; mô phỏng đã khoá kệ, mục 4.14), mở rộng 4 bánh, node cầu nối UART Pi ↔ STM32 (phải có giữ bán kính cua + covariance cho odom), YDLidar, BNO055, INA226.
+3. **Phần cứng chưa làm:** cầu nối IMU phát `/imu/raw` (node `imu_bias` trừ bias con quay rồi mới tới EKF, mục 4.15), chốt định vị trên mặt nâng (kệ không trượt khi xe quay; mô phỏng đã khoá kệ, mục 4.14), mở rộng 4 bánh, node cầu nối UART Pi ↔ STM32 (phải có giữ bán kính cua + covariance cho odom), YDLidar, BNO055, INA226.
 4. **Kích thước xe** (track, wheelbase) vẫn là ước lượng, cần đo xe thật.
 5. **Node Python trong mô phỏng tốn CPU vì `/clock`:** đã giảm từ 38–75 % xuống 30–48 % mỗi node nhờ bước 3 ms (mục 4.8); vẫn còn vì `/clock` 333 tin/s. Chỉ có trong mô phỏng.
 6. **Dashboard chưa có đăng nhập:** chỉ mở trong LAN / Tailscale.
-7. **Nav2 thỉnh thoảng không khởi động xong:** container nạp node nhưng phản hồi dịch vụ `load_node` cho launch bị timeout, launch chờ mãi (1/10 lần chạy ngày 08/10). Chưa tìm nguyên nhân; khi gặp thì chạy lại.
-8. **Kiva:** lấy kệ đã chui theo chân kệ (lệch ngang ≤ 0.9 cm, mục 4.10) nhưng xe dừng quá tâm kệ 4–6 cm; trả kệ vẫn theo bản đồ. Đã có đơn hàng (mục 4.11), pin và tự sạc (mục 4.12), xử lý sự cố (mục 4.13); chưa phát hiện mất định vị.
+7. **Cửa sổ Gazebo crash lúc khởi động** (driver NVIDIA D3D12 của WSL, 1/4 lần chạy): launch tự mở lại (mục 4.15). Có 1 lần xe không rời được trạm sạc vì "vật cản" ngay sau xe, chưa rõ nguyên nhân, chạy lại thì hết.
+8. **Nav2 thỉnh thoảng không khởi động xong:** container nạp node nhưng phản hồi dịch vụ `load_node` cho launch bị timeout, launch chờ mãi (1/10 lần chạy ngày 08/10). Chưa tìm nguyên nhân; khi gặp thì chạy lại.
+9. **Kiva:** lấy kệ đã chui theo chân kệ (lệch ngang ≤ 0.9 cm, mục 4.10) nhưng xe dừng quá tâm kệ 4–6 cm; trả kệ vẫn theo bản đồ. Đã có đơn hàng (mục 4.11), pin và tự sạc (mục 4.12), xử lý sự cố (mục 4.13); chưa phát hiện mất định vị.
 
 ## 7. Cách ghi tiếp tài liệu này
 Mỗi khi xong một phần việc hoặc sửa xong một sự cố, thêm vào mục tương ứng theo quy ước ở đầu file: mục tiêu, cách làm, sai lầm, nguyên nhân, cách sửa, kết quả có số liệu, bài học. Quy tắc này nằm trong skill `.claude/skills/report-log`.
