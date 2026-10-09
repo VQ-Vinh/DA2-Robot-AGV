@@ -84,6 +84,13 @@ def generate_launch_description():
     # Khong dung use_sim_time (giu nguyen stamp cua scan, khong can doc /clock).
     payload_manager = Node(package='agv_navigation', executable='payload_manager.py', output='screen')
 
+    # Pin (tram sac theo vi tri that): cung topic /battery_state voi cau noi STM32 (INA226) cua xe that.
+    # battery_time_scale:=20 de thu chinh sach sac nhanh (hao / sac nhanh gap 20).
+    battery = Node(
+        package='agv_gazebo', executable='battery_sim.py', output='screen',
+        parameters=[{'time_scale': ParameterValue(LaunchConfiguration('battery_time_scale'), value_type=float),
+                     'initial_percentage': ParameterValue(LaunchConfiguration('battery_initial'), value_type=float)}])
+
     # Nhan dien ke mini tu 4 chan (scan chua loc) -> /detected_dock_pose cho docking_server: dung chung xe that
     shelf_detector = Node(package='agv_navigation', executable='shelf_detector.py', output='screen')
 
@@ -165,6 +172,9 @@ def generate_launch_description():
         DeclareLaunchArgument('mission', default_value='',
                               description='Nhiem vu kho chay ngay khi Nav2 san sang (can nav:=true)'),
         DeclareLaunchArgument('repeat', default_value='1', description='So lan lap nhiem vu tu dong'),
+        DeclareLaunchArgument('battery_time_scale', default_value='1.0',
+                              description='Tang toc hao / sac pin mo phong (1 = thoi gian that)'),
+        DeclareLaunchArgument('battery_initial', default_value='0.9', description='Pin luc dau (0..1)'),
         DeclareLaunchArgument('rpm_min', default_value='100.0',
                               description='RPM nho nhat cua banh (vung chet firmware), 0 = tat'),
         gazebo_server,
@@ -175,6 +185,7 @@ def generate_launch_description():
         motor_model,
         lift,
         payload_manager,
+        battery,
         shelf_detector,
         wheel_odom,
         ekf,

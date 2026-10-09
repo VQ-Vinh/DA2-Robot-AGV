@@ -12,6 +12,7 @@ Kho 12 x 8 m (world x: -6..6, y: -4..4). Frame map = world + (4.5, 0).
   - Khu luu ke mini o giua: 2 day o, loi giua rong
   - Tram sac, tram lay hang, khu nhap hang ben trai; 2 pallet ben phai
 """
+import math
 import os
 
 import yaml
@@ -36,8 +37,8 @@ def box(name, pose, size, color, collision=True):
             f'<material><ambient>{color} 1</ambient><diffuse>{color} 1</diffuse></material></visual>')
 
 
-def static_model(name, x, y, z, size, color, collision=True):
-    return (f'    <model name="{name}"><static>true</static><pose>{x} {y} {z} 0 0 0</pose>\n'
+def static_model(name, x, y, z, size, color, collision=True, yaw=0.0):
+    return (f'    <model name="{name}"><static>true</static><pose>{x} {y} {z} 0 0 {yaw}</pose>\n'
             f'      <link name="link">{box(name, "0 0 0 0 0 0", size, color, collision)}</link>\n'
             f'    </model>\n')
 
@@ -126,6 +127,15 @@ def main():
             sx, sy = MARKER_SIZE[kind]
             out.append(static_model(f'mark_{name}', st['x'] - MAP_X, st['y'] - MAP_Y, 0.001,
                                     f'{sx} {sy} 0.002', MARKER_COLOR[kind], collision=False))
+    # Tram sac: khoi tiep diem truoc diem dock (mat khoi cach tam xe 0.18 m: mica truoc 0.15 m + 3 cm
+    # cho xe dung qua). Cao 0.15 m de lidar (0.12 m) THAY: ban dau lam thap 8 cm cho ban do khong doi,
+    # xe hu vao no ma odom van tang, AMCL tuong da di 5 m (REPORT.md 4.12).
+    # Tiep diem "cham" do battery_sim tinh theo vi tri xe.
+    chargers = [(name, st) for name, st in stations.items() if st.get('kind') == 'charge']
+    for name, st in chargers:
+        c, s = math.cos(st['yaw']), math.sin(st['yaw'])
+        out.append(static_model(f'charger_{name}', st['x'] + 0.23 * c - MAP_X, st['y'] + 0.23 * s - MAP_Y, 0.075,
+                                '0.1 0.3 0.15', '0.15 0.15 0.15', yaw=st['yaw']))
     for name, sl in slots.items():
         out.append(static_model(f'slot_{name}', sl['x'] - MAP_X, sl['y'] - MAP_Y, 0.0005,
                                 f'{cfg["size"] + 0.08} {cfg["size"] + 0.08} 0.001', '0.85 0.85 0.3',
@@ -141,8 +151,11 @@ def main():
         f.write(''.join(out))
 
     # Khoi dock trong nav2.yaml (giua 2 dong danh dau), moi o ke la mot dock "shelf_dock"
-    names = [f'slot_{n}' for n in slots]
+    names = [f'slot_{n}' for n in slots] + [f'charger_{n}' for n, _ in chargers]
     block = [f"    docks: [{', '.join(repr(n) for n in names)}]\n"]
+    for n, st in chargers:
+        block.append(f"    charger_{n}:\n      type: 'simple_charging_dock'\n      frame: map\n"
+                     f"      pose: [{st['x']}, {st['y']}, {st['yaw']}]\n")
     for n, sl in slots.items():
         block.append(f"    slot_{n}:\n      type: 'shelf_dock'\n      frame: map\n"
                      f"      pose: [{sl['x']}, {sl['y']}, {sl['yaw']}]\n")

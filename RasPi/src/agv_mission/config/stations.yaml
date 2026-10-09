@@ -5,10 +5,12 @@
 #   kind : charge (tram sac) | pick (tram lay hang: nguoi lay hang tu ke xe cho toi)
 #          | inbound (khu nhap hang, bo sung hang len ke) | waypoint (diem tren loi di)
 stations:
+  # Tram sac sau cho xe xuat phat 0.45 m, xe tien ve phia tay de cham tiep diem. Dat ngay tai cho
+  # xuat phat thi khoi tiep diem chan dau xe luc khoi dong (REPORT.md 4.12).
   tram_sac:
-    x: 0.0
+    x: -0.45
     y: 0.0
-    yaw: 0.0
+    yaw: 3.14159
     kind: charge
     label: "Tram sac"
   tram_lay_hang:

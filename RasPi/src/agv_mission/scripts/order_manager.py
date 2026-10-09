@@ -4,7 +4,13 @@
 Mot don = "dua ke <ke> toi tram <tram>". Xe lam lan luot:
   toi staging truoc o -> chui gam (shelf_dock, theo chan ke) -> nang -> lui ra -> cho ke toi tram
   -> CHO NGUOI XAC NHAN da lay hang -> toi staging -> tra ke vao o (slot_dock) -> ha -> lui ra
-Het don thi ve idle_station (tram sac).
+Het don thi vao tram sac (DockRobot dock charger_<idle_station>) va sac.
+
+Pin (/battery_state, battery_sim hoac INA226 tren xe that): truoc moi don, pin < battery_low +
+order_reserve (phan du tru cho chinh don do) thi khong nhan don, vao sac toi battery_full roi moi lam
+tiep (don dang chay van lam xong). Chi so voi battery_low thi xe nhan don luc pin 34 % roi can 0 %
+giua chung (REPORT.md 4.12). Dang dung o
+tram sac ma co don va pin du thi roi tram (UndockRobot) roi lam don.
 
 Lenh: /order/command (std_msgs/String)
   add <ke> <tram> [uu_tien]   them don (uu_tien lon lam truoc, mac dinh 0)
@@ -33,18 +39,23 @@ import rclpy
 import yaml
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped
-from nav2_msgs.action import DockRobot, NavigateThroughPoses, NavigateToPose, UndockRobot
+from geometry_msgs.msg import Point
+from lifecycle_msgs.msg import State
+from lifecycle_msgs.srv import GetState
+from nav2_msgs.action import BackUp, DockRobot, NavigateThroughPoses, NavigateToPose, UndockRobot
 from nav2_msgs.srv import ClearEntireCostmap
 from rclpy.action import ActionClient
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
+from sensor_msgs.msg import BatteryState
 from std_msgs.msg import Bool, String
 
 STEP_NAME = {
     'staging': 'toi truoc o ke', 'dock': 'chui gam', 'lift': 'nang ke', 'undock': 'lui ra',
     'to_station': 'cho ke toi tram', 'wait_confirm': 'cho nguoi lay hang', 'return_staging': 'toi truoc o',
     'return_dock': 'tra ke vao o', 'lower': 'ha ke', 'return_undock': 'lui ra', 'home': 've tram sac',
+    'to_charger': 'vao tram sac', 'charging': 'dang sac', 'docked': 'dung o tram sac', 'leave_charger': 'roi tram sac',
 }
 
 
@@ -63,6 +74,13 @@ class OrderManager(Node):
         self.straight = self.declare_parameter('straight_approach', 1.2).value
         self.auto_confirm_s = self.declare_parameter('auto_confirm_s', 0.0).value   # 0 = cho nguoi bam
         self.retries = self.declare_parameter('retries', 1).value
+        self.battery_low = self.declare_parameter('battery_low', 0.30).value     # duoi muc nay: di sac
+        self.battery_full = self.declare_parameter('battery_full', 0.80).value   # sac toi muc nay moi nhan don
+        self.order_reserve = self.declare_parameter('order_reserve', 0.10).value  # pin can cho mot don
+        # = staging_x_offset cua simple_charging_dock (nav2.yaml), dau duong
+        self.charger_staging = self.declare_parameter('charger_staging_offset', 0.7).value
+        self.battery = None        # (phan tram 0..1, dang sac?)
+        self.charge_hold = False   # dang giu de sac, khong nhan don
 
         self.layout = yaml.safe_load(open(self.get_parameter('shelves_file').value))
         self.stations = yaml.safe_load(open(self.get_parameter('stations_file').value))['stations']
@@ -89,10 +107,15 @@ class OrderManager(Node):
         self.create_subscription(String, 'order/command', self.on_command, 10)
         self.create_subscription(String, 'lift/state', lambda m: setattr(self, 'lift_state', m.data), latched)
         self.create_subscription(Bool, 'lift/has_load', lambda m: setattr(self, 'has_load', m.data), latched)
+        self.create_subscription(BatteryState, 'battery_state', self.on_battery, 10)
         self.nav = ActionClient(self, NavigateToPose, 'navigate_to_pose')
         self.nav_through = ActionClient(self, NavigateThroughPoses, 'navigate_through_poses')
         self.dock = ActionClient(self, DockRobot, 'dock_robot')
         self.undock = ActionClient(self, UndockRobot, 'undock_robot')
+        self.backup = ActionClient(self, BackUp, 'backup')
+        # Nav2 chi nhan dich khi da "active" (action server co the co truoc do va tu choi moi dich)
+        self.state_clients = [self.create_client(GetState, f'{n}/get_state')
+                              for n in ('bt_navigator', 'docking_server')]
         self.clear_clients = [self.create_client(ClearEntireCostmap, s) for s in (
             'global_costmap/clear_entirely_global_costmap', 'local_costmap/clear_entirely_local_costmap')]
         self.create_timer(1.0, self.publish_state)
@@ -112,6 +135,10 @@ class OrderManager(Node):
             if self.reset_shelves or not self.db.execute('SELECT COUNT(*) FROM shelves').fetchone()[0]:
                 self.db.execute('DELETE FROM shelves')
                 self.db.executemany('INSERT INTO shelves VALUES (?, ?)', self.layout['shelves'].items())
+            if self.reset_shelves:
+                # Mo phong: world dat lai ke -> don cu cua lan chay truoc khong con y nghia
+                self.db.execute("UPDATE orders SET status='cancelled', error='mo phong khoi dong lai' "
+                                "WHERE status='pending'")
             # Don dang chay luc tat may: khong biet xe da lam toi dau -> danh dau loi, nguoi kiem tra
             self.db.execute("UPDATE orders SET status='failed', error='mat dien / khoi dong lai' "
                             "WHERE status='running'")
@@ -160,8 +187,14 @@ class OrderManager(Node):
             'shelves': shelves,
             'slots': self.slots,
             'stats': {'done': done[0], 'avg_s': round(done[1], 1) if done[1] else None},
+            'battery': ({'pct': round(100 * self.battery[0], 1), 'charging': self.battery[1]}
+                        if self.battery else None),
+            'charge_hold': self.charge_hold,
         }
         self.state_pub.publish(String(data=json.dumps(state, ensure_ascii=False)))
+
+    def on_battery(self, m):
+        self.battery = (m.percentage, m.power_supply_status == BatteryState.POWER_SUPPLY_STATUS_CHARGING)
 
     # ---------- lenh ----------
     def on_command(self, msg):
@@ -383,23 +416,92 @@ class OrderManager(Node):
                                   'ORDER BY priority DESC, id LIMIT 1').fetchone()
         return {'id': row[0], 'shelf': row[1], 'station': row[2]} if row else None
 
+    def go_charger(self):
+        """Vao tram sac: tu di thang vao staging doc truc tram (nhu voi ke), roi DockRobot cho bao dang sac.
+        De docking_server tu di thi xe dang trong 0.5 m quanh staging se chui cheo vao luon va quet goc
+        khoi tiep diem (REPORT.md 4.12)."""
+        st = self.stations[self.idle_station]
+        c, s = math.cos(st['yaw']), math.sin(st['yaw'])
+        d, pre = self.charger_staging, self.charger_staging + self.straight
+        g = NavigateThroughPoses.Goal()
+        g.poses = [self.pose(st['x'] - pre * c, st['y'] - pre * s, st['yaw']),
+                   self.pose(st['x'] - d * c, st['y'] - d * s, st['yaw'])]
+        ok, r = self.action(self.nav_through, g, 180.0)
+        if not ok:
+            return False, 'khong toi duoc truoc tram sac'
+        g = DockRobot.Goal()
+        g.use_dock_id, g.dock_id = True, f'charger_{self.idle_station}'
+        g.navigate_to_staging_pose = False
+        ok, r = self.action(self.dock, g, 120.0)
+        ok = ok and r is not None and r.success
+        return ok, '' if ok or r is None else f'error_code {r.error_code}'
+
+    def leave_charger(self):
+        """Roi tram sac. UndockRobot loi (vd xe bat khoi tiep diem > docking_threshold: "Robot is not in
+        the dock") thi lui thang 0.5 m bang behavior BackUp: xe dang sat khoi tiep diem, quay tai cho se quet vao."""
+        ok, info = self.undock_from('simple_charging_dock')
+        if ok:
+            return True, ''
+        g = BackUp.Goal()
+        g.target = Point(x=0.5)
+        g.speed = 0.15
+        g.time_allowance.sec = 15
+        ok2, _ = self.action(self.backup, g, 30.0)
+        return ok2, f'undock loi ({info}), lui thang 0.5 m: {"OK" if ok2 else "loi"}'
+
+    def nav2_active(self):
+        for c in self.state_clients:
+            if not c.wait_for_service(timeout_sec=2.0):
+                return False
+            fut = c.call_async(GetState.Request())
+            if not self.wait_future(fut, 5.0) or fut.result().current_state.id != State.PRIMARY_STATE_ACTIVE:
+                return False
+        return True
+
+    def update_charge_hold(self):
+        if self.battery is None:
+            return
+        pct = self.battery[0]
+        need = self.battery_low + self.order_reserve
+        if not self.charge_hold and pct < need:
+            self.charge_hold = True
+            self.say(f'Pin {100 * pct:.0f} % < {100 * need:.0f} % (nguong {100 * self.battery_low:.0f} % + du tru '
+                     f'mot don): dung nhan don, di sac toi {100 * self.battery_full:.0f} %')
+        elif self.charge_hold and pct >= self.battery_full:
+            self.charge_hold = False
+            self.say(f'Pin {100 * pct:.0f} %: nhan don tiep')
+            self.wake.set()
+
     def worker(self):
-        while not self.dock.wait_for_server(timeout_sec=2.0) and rclpy.ok():
-            pass
+        while rclpy.ok() and not self.nav2_active():
+            time.sleep(1.0)
         self.say('Nav2 / docking san sang, nhan don')
-        at_home = False
+        # Luc dau coi nhu chua o tram (du xe xuat phat sat tiep diem): DockRobot mot lan de docking_server
+        # biet xe dang o dock nao, sau do UndockRobot moi chay duoc
+        docked = False
         while rclpy.ok():
-            o = None if self.paused else self.next_order()
+            self.update_charge_hold()
+            o = None if (self.paused or self.charge_hold) else self.next_order()
             if o is None:
-                if not at_home and self.idle_station in self.stations:
-                    self.set_step('home')
-                    ok, _ = self.go_station(self.idle_station)
-                    at_home = ok
-                    self.set_step(None)
+                if not docked:
+                    self.set_step('to_charger')
+                    ok, info = self.go_charger()
+                    docked = ok
+                    if not ok:
+                        self.say(f'Vao tram sac loi{": " + info if info else ""}, thu lai sau')
+                self.set_step(('charging' if self.battery and self.battery[1] else 'docked') if docked else None)
                 self.wake.wait(2.0)
                 self.wake.clear()
                 continue
-            at_home = False
+            if docked:
+                self.set_step('leave_charger')
+                ok, info = self.leave_charger()
+                if info:
+                    self.say(f'Roi tram sac: {info}')
+                if not ok:
+                    time.sleep(2.0)
+                    continue
+                docked = False
             self.current = o
             try:
                 self.run_order(o)

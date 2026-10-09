@@ -20,76 +20,79 @@
     <light type="directional" name="sun"><cast_shadows>true</cast_shadows><pose>0 0 10 0 0 0</pose><diffuse>0.9 0.9 0.9 1</diffuse><specular>0.2 0.2 0.2 1</specular><direction>-0.3 0.2 -0.9</direction></light>
     <model name="floor"><static>true</static><link name="link"><collision name="c"><geometry><plane><normal>0 0 1</normal><size>30 30</size></plane></geometry></collision><visual name="v"><geometry><plane><normal>0 0 1</normal><size>30 30</size></plane></geometry><material><ambient>0.55 0.55 0.5 1</ambient><diffuse>0.55 0.55 0.5 1</diffuse></material></visual></link></model>
     <!-- Tuong cao 1 m -->
-    <model name="wall_north"><static>true</static><pose>0 4.05 0.5 0 0 0</pose>
+    <model name="wall_north"><static>true</static><pose>0 4.05 0.5 0 0 0.0</pose>
       <link name="link"><collision name="wall_north_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>12.2 0.1 1.0</size></box></geometry></collision><visual name="wall_north_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>12.2 0.1 1.0</size></box></geometry><material><ambient>0.8 0.8 0.8 1</ambient><diffuse>0.8 0.8 0.8 1</diffuse></material></visual></link>
     </model>
-    <model name="wall_south"><static>true</static><pose>0 -4.05 0.5 0 0 0</pose>
+    <model name="wall_south"><static>true</static><pose>0 -4.05 0.5 0 0 0.0</pose>
       <link name="link"><collision name="wall_south_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>12.2 0.1 1.0</size></box></geometry></collision><visual name="wall_south_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>12.2 0.1 1.0</size></box></geometry><material><ambient>0.8 0.8 0.8 1</ambient><diffuse>0.8 0.8 0.8 1</diffuse></material></visual></link>
     </model>
-    <model name="wall_east"><static>true</static><pose>6.05 0 0.5 0 0 0</pose>
+    <model name="wall_east"><static>true</static><pose>6.05 0 0.5 0 0 0.0</pose>
       <link name="link"><collision name="wall_east_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.1 8.0 1.0</size></box></geometry></collision><visual name="wall_east_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.1 8.0 1.0</size></box></geometry><material><ambient>0.8 0.8 0.8 1</ambient><diffuse>0.8 0.8 0.8 1</diffuse></material></visual></link>
     </model>
-    <model name="wall_west"><static>true</static><pose>-6.05 0 0.5 0 0 0</pose>
+    <model name="wall_west"><static>true</static><pose>-6.05 0 0.5 0 0 0.0</pose>
       <link name="link"><collision name="wall_west_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.1 8.0 1.0</size></box></geometry></collision><visual name="wall_west_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.1 8.0 1.0</size></box></geometry><material><ambient>0.8 0.8 0.8 1</ambient><diffuse>0.8 0.8 0.8 1</diffuse></material></visual></link>
     </model>
     <!-- Ke co dinh sat tuong (toi san, lidar thay) -->
-    <model name="rack_1"><static>true</static><pose>-1.2 3.45 0.6 0 0 0</pose>
+    <model name="rack_1"><static>true</static><pose>-1.2 3.45 0.6 0 0 0.0</pose>
       <link name="link"><collision name="rack_1_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>3.0 0.6 1.2</size></box></geometry></collision><visual name="rack_1_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>3.0 0.6 1.2</size></box></geometry><material><ambient>0.1 0.3 0.7 1</ambient><diffuse>0.1 0.3 0.7 1</diffuse></material></visual></link>
     </model>
-    <model name="rack_2"><static>true</static><pose>2.8 3.45 0.6 0 0 0</pose>
+    <model name="rack_2"><static>true</static><pose>2.8 3.45 0.6 0 0 0.0</pose>
       <link name="link"><collision name="rack_2_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>3.0 0.6 1.2</size></box></geometry></collision><visual name="rack_2_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>3.0 0.6 1.2</size></box></geometry><material><ambient>0.1 0.3 0.7 1</ambient><diffuse>0.1 0.3 0.7 1</diffuse></material></visual></link>
     </model>
-    <model name="rack_3"><static>true</static><pose>-1.2 -3.45 0.6 0 0 0</pose>
+    <model name="rack_3"><static>true</static><pose>-1.2 -3.45 0.6 0 0 0.0</pose>
       <link name="link"><collision name="rack_3_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>3.0 0.6 1.2</size></box></geometry></collision><visual name="rack_3_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>3.0 0.6 1.2</size></box></geometry><material><ambient>0.1 0.3 0.7 1</ambient><diffuse>0.1 0.3 0.7 1</diffuse></material></visual></link>
     </model>
-    <model name="rack_4"><static>true</static><pose>2.8 -3.45 0.6 0 0 0</pose>
+    <model name="rack_4"><static>true</static><pose>2.8 -3.45 0.6 0 0 0.0</pose>
       <link name="link"><collision name="rack_4_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>3.0 0.6 1.2</size></box></geometry></collision><visual name="rack_4_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>3.0 0.6 1.2</size></box></geometry><material><ambient>0.1 0.3 0.7 1</ambient><diffuse>0.1 0.3 0.7 1</diffuse></material></visual></link>
     </model>
     <!-- Pallet 0.15 m: lidar o 0.12 m thay duoc, khong can vung cam -->
-    <model name="pallet_1"><static>true</static><pose>5.0 2.8 0.075 0 0 0</pose>
+    <model name="pallet_1"><static>true</static><pose>5.0 2.8 0.075 0 0 0.0</pose>
       <link name="link"><collision name="pallet_1_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>1.0 0.8 0.15</size></box></geometry></collision><visual name="pallet_1_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>1.0 0.8 0.15</size></box></geometry><material><ambient>0.6 0.4 0.2 1</ambient><diffuse>0.6 0.4 0.2 1</diffuse></material></visual></link>
     </model>
-    <model name="pallet_2"><static>true</static><pose>5.0 -2.8 0.075 0 0 0</pose>
+    <model name="pallet_2"><static>true</static><pose>5.0 -2.8 0.075 0 0 0.0</pose>
       <link name="link"><collision name="pallet_2_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>1.0 0.8 0.15</size></box></geometry></collision><visual name="pallet_2_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>1.0 0.8 0.15</size></box></geometry><material><ambient>0.6 0.4 0.2 1</ambient><diffuse>0.6 0.4 0.2 1</diffuse></material></visual></link>
     </model>
     <!-- Vach son san (khong collision): tram va o ke -->
-    <model name="mark_tram_sac"><static>true</static><pose>-4.5 0.0 0.001 0 0 0</pose>
+    <model name="mark_tram_sac"><static>true</static><pose>-4.95 0.0 0.001 0 0 0.0</pose>
       <link name="link"><visual name="mark_tram_sac_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.6 0.6 0.002</size></box></geometry><material><ambient>0.1 0.7 0.2 1</ambient><diffuse>0.1 0.7 0.2 1</diffuse></material></visual></link>
     </model>
-    <model name="mark_tram_lay_hang"><static>true</static><pose>-4.4 -3.0 0.001 0 0 0</pose>
+    <model name="mark_tram_lay_hang"><static>true</static><pose>-4.4 -3.0 0.001 0 0 0.0</pose>
       <link name="link"><visual name="mark_tram_lay_hang_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>1.0 0.8 0.002</size></box></geometry><material><ambient>0.95 0.55 0.0 1</ambient><diffuse>0.95 0.55 0.0 1</diffuse></material></visual></link>
     </model>
-    <model name="mark_khu_nhap_hang"><static>true</static><pose>-4.4 3.0 0.001 0 0 0</pose>
+    <model name="mark_khu_nhap_hang"><static>true</static><pose>-4.4 3.0 0.001 0 0 0.0</pose>
       <link name="link"><visual name="mark_khu_nhap_hang_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>1.0 0.8 0.002</size></box></geometry><material><ambient>0.2 0.45 0.9 1</ambient><diffuse>0.2 0.45 0.9 1</diffuse></material></visual></link>
     </model>
-    <model name="slot_N1"><static>true</static><pose>-1.5 1.6 0.0005 0 0 0</pose>
+    <model name="charger_tram_sac"><static>true</static><pose>-5.179999999999191 6.103256524711279e-07 0.075 0 0 3.14159</pose>
+      <link name="link"><collision name="charger_tram_sac_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.1 0.3 0.15</size></box></geometry></collision><visual name="charger_tram_sac_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.1 0.3 0.15</size></box></geometry><material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.15 0.15 0.15 1</diffuse></material></visual></link>
+    </model>
+    <model name="slot_N1"><static>true</static><pose>-1.5 1.6 0.0005 0 0 0.0</pose>
       <link name="link"><visual name="slot_N1_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.83 0.83 0.001</size></box></geometry><material><ambient>0.85 0.85 0.3 1</ambient><diffuse>0.85 0.85 0.3 1</diffuse></material></visual></link>
     </model>
-    <model name="slot_N2"><static>true</static><pose>-0.40000000000000036 1.6 0.0005 0 0 0</pose>
+    <model name="slot_N2"><static>true</static><pose>-0.40000000000000036 1.6 0.0005 0 0 0.0</pose>
       <link name="link"><visual name="slot_N2_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.83 0.83 0.001</size></box></geometry><material><ambient>0.85 0.85 0.3 1</ambient><diffuse>0.85 0.85 0.3 1</diffuse></material></visual></link>
     </model>
-    <model name="slot_N3"><static>true</static><pose>0.7000000000000002 1.6 0.0005 0 0 0</pose>
+    <model name="slot_N3"><static>true</static><pose>0.7000000000000002 1.6 0.0005 0 0 0.0</pose>
       <link name="link"><visual name="slot_N3_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.83 0.83 0.001</size></box></geometry><material><ambient>0.85 0.85 0.3 1</ambient><diffuse>0.85 0.85 0.3 1</diffuse></material></visual></link>
     </model>
-    <model name="slot_N4"><static>true</static><pose>1.7999999999999998 1.6 0.0005 0 0 0</pose>
+    <model name="slot_N4"><static>true</static><pose>1.7999999999999998 1.6 0.0005 0 0 0.0</pose>
       <link name="link"><visual name="slot_N4_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.83 0.83 0.001</size></box></geometry><material><ambient>0.85 0.85 0.3 1</ambient><diffuse>0.85 0.85 0.3 1</diffuse></material></visual></link>
     </model>
-    <model name="slot_N5"><static>true</static><pose>2.9000000000000004 1.6 0.0005 0 0 0</pose>
+    <model name="slot_N5"><static>true</static><pose>2.9000000000000004 1.6 0.0005 0 0 0.0</pose>
       <link name="link"><visual name="slot_N5_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.83 0.83 0.001</size></box></geometry><material><ambient>0.85 0.85 0.3 1</ambient><diffuse>0.85 0.85 0.3 1</diffuse></material></visual></link>
     </model>
-    <model name="slot_S1"><static>true</static><pose>-1.5 -1.6 0.0005 0 0 0</pose>
+    <model name="slot_S1"><static>true</static><pose>-1.5 -1.6 0.0005 0 0 0.0</pose>
       <link name="link"><visual name="slot_S1_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.83 0.83 0.001</size></box></geometry><material><ambient>0.85 0.85 0.3 1</ambient><diffuse>0.85 0.85 0.3 1</diffuse></material></visual></link>
     </model>
-    <model name="slot_S2"><static>true</static><pose>-0.40000000000000036 -1.6 0.0005 0 0 0</pose>
+    <model name="slot_S2"><static>true</static><pose>-0.40000000000000036 -1.6 0.0005 0 0 0.0</pose>
       <link name="link"><visual name="slot_S2_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.83 0.83 0.001</size></box></geometry><material><ambient>0.85 0.85 0.3 1</ambient><diffuse>0.85 0.85 0.3 1</diffuse></material></visual></link>
     </model>
-    <model name="slot_S3"><static>true</static><pose>0.7000000000000002 -1.6 0.0005 0 0 0</pose>
+    <model name="slot_S3"><static>true</static><pose>0.7000000000000002 -1.6 0.0005 0 0 0.0</pose>
       <link name="link"><visual name="slot_S3_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.83 0.83 0.001</size></box></geometry><material><ambient>0.85 0.85 0.3 1</ambient><diffuse>0.85 0.85 0.3 1</diffuse></material></visual></link>
     </model>
-    <model name="slot_S4"><static>true</static><pose>1.7999999999999998 -1.6 0.0005 0 0 0</pose>
+    <model name="slot_S4"><static>true</static><pose>1.7999999999999998 -1.6 0.0005 0 0 0.0</pose>
       <link name="link"><visual name="slot_S4_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.83 0.83 0.001</size></box></geometry><material><ambient>0.85 0.85 0.3 1</ambient><diffuse>0.85 0.85 0.3 1</diffuse></material></visual></link>
     </model>
-    <model name="slot_S5"><static>true</static><pose>2.9000000000000004 -1.6 0.0005 0 0 0</pose>
+    <model name="slot_S5"><static>true</static><pose>2.9000000000000004 -1.6 0.0005 0 0 0.0</pose>
       <link name="link"><visual name="slot_S5_v"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.83 0.83 0.001</size></box></geometry><material><ambient>0.85 0.85 0.3 1</ambient><diffuse>0.85 0.85 0.3 1</diffuse></material></visual></link>
     </model>
     <!-- Ke mini 0.75 m, gam 0.18 m, 3.0 kg (ke + hang) -->

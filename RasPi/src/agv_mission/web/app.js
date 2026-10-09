@@ -378,13 +378,18 @@ function renderOrders() {
     stSel.replaceChildren(...picks.map(([n, st]) => el('option', { value: n }, st.label || n)));
   }
 
+  const b = o.battery;
+  $('#bat-text').textContent = b ? `Pin ${Math.round(b.pct)} %${b.charging ? ' ⚡' : ''}` : 'Pin —';
+  setPill('#pill-bat', !!b && !o.charge_hold, !!b && o.charge_hold);
   $('#o-pause').textContent = o.paused ? 'Tiếp tục' : 'Tạm dừng';
   $('#o-error').hidden = !o.error;
   $('#o-error-text').textContent = o.error ? `Xe dừng: ${o.error}` : '';
   const cur = o.orders.find((x) => x.id === o.current);
   $('#o-current').replaceChildren(cur
     ? el('span', {}, el('b', {}, `#${cur.id} ${cur.shelf} → ${label(cur.station)}`), ` — ${o.step_label || ''}`)
-    : (o.paused ? 'Đang tạm dừng nhận đơn' : 'Không có đơn đang chạy'));
+    : (o.charge_hold ? `Pin yếu: đang sạc, chưa nhận đơn${o.step_label ? ' — ' + o.step_label : ''}`
+      : o.paused ? 'Đang tạm dừng nhận đơn'
+        : `Không có đơn đang chạy${o.step_label ? ' — ' + o.step_label : ''}`));
   $('#o-confirm').hidden = o.step !== 'wait_confirm';
 
   $('#o-queue').replaceChildren(...o.queue.map((q) => el('li', {},

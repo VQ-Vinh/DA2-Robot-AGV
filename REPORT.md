@@ -64,6 +64,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 08/10/2026 | Kho kiểu Kiva, giai đoạn 1: chui gầm, nâng, chở kệ | #13 |
 | 08/10/2026 | Kho Kiva, giai đoạn 2: nhận diện kệ bằng chân kệ | #14 |
 | 08/10/2026 | Kho Kiva, giai đoạn 3: quản lý đơn hàng | #15 |
+| 08/10/2026 | Kho Kiva, giai đoạn 4: pin và tự về sạc | #16 |
 
 ---
 
@@ -446,6 +447,30 @@ Các sự cố gặp phải, theo thứ tự:
 - **Còn lại:** chưa dừng khẩn / xử lý sự cố tự động (giai đoạn 5); chưa có pin và tự về sạc (giai đoạn 4); `order_manager` và `mission_server` chưa loại trừ nhau (dùng cùng lúc sẽ tranh điều khiển xe).
 - **Bài học:** thử lại một lần sau khi xoá costmap gỡ được lỗi va chạm "ảo" thỉnh thoảng gặp; nhưng phải phân biệt lỗi trước và sau khi nâng kệ, vì khi đang chở thì không được tự bỏ đơn.
 
+### 4.12. Kho Kiva, giai đoạn 4: pin và tự về sạc (PR #16)
+- **Mục tiêu:** xe tự quản lý pin như AMR thật: rảnh thì vào sạc, pin yếu thì không nhận đơn mới, sạc đủ thì làm tiếp.
+- **Cách làm:**
+  - `battery_sim.py` phát `/battery_state` đúng kiểu ROS (`sensor_msgs/BatteryState`, dòng dương = đang sạc), cùng topic với INA226 trên xe thật. Sạc khi xe (vị trí thật) cách điểm dock ≤ 6 cm, lệch góc ≤ 0.2 rad.
+  - Trạm sạc là dock `SimpleChargingDock` có sẵn của Nav2, sinh trong danh sách dock từ `stations.yaml`. Đọc mã nguồn plugin trước: "đang sạc" = dòng > `charging_threshold`.
+  - `order_manager`: rảnh → vào sạc; ngưỡng nhận đơn = `battery_low` + `order_reserve`; có đơn khi đang ở trạm và pin đủ → rời trạm rồi làm.
+- **Sai lầm / sự cố** (mỗi lần sửa đều chạy lại bài thử pin):
+
+  | # | Sự cố | Nguyên nhân (tìm bằng cách nào) | Cách sửa |
+  |---|---|---|---|
+  | 1 | `simple_charging_dock` trong file mẫu bật `use_external_detection_pose` | Đọc cấu hình: nó sẽ đọc `/detected_dock_pose` của `shelf_detector` → xe chui vào kệ thay vì vào trạm sạc | Tắt, trạm sạc theo bản đồ |
+  | 2 | Cả 3 đơn hỏng "Failed initial dock detection"; bài thử vận chuyển cũ cũng hỏng, staging lệch ngang **5 m** | Khối tiếp điểm (cao 8 cm, cố ý thấp hơn lidar để bản đồ khỏi đổi) đặt ngay trước chỗ xe xuất phát: Nav2 lập đường xuyên qua nó, xe húc vào, bánh trượt nhưng odom vẫn tăng, AMCL tưởng xe đã tới staging. Giống hệt sự cố pallet ở mục 4.4 | Dời trạm sạc ra sau chỗ xuất phát 0.45 m (xe tiến về phía tây vào sạc), khối cao 0.15 m để lidar thấy, lập lại bản đồ |
+  | 3 | Nhận đơn lúc pin 34 % (trên ngưỡng 30 %) rồi cạn 0 % giữa đơn | Chỉ so với ngưỡng, không tính phần pin cho chính đơn đó | Thêm `order_reserve` (10 %) |
+  | 4 | 2 đơn hỏng ngay khi khởi động | Chỉ chờ action server của docking xuất hiện, chưa chờ Nav2 "active"; và còn 2 đơn "đang chờ" của lần thử trước trong SQLite | Chờ `bt_navigator` + `docking_server` active (như `mission_server`); mô phỏng (`reset_shelves`) huỷ đơn cũ |
+  | 5 | Rời trạm thất bại mãi: "Robot is not in the dock" | Xe bật khỏi tiếp điểm > `docking_threshold` 5 cm | Nếu `UndockRobot` lỗi thì lùi thẳng 0.5 m bằng behavior `BackUp` (quay tại chỗ sát khối sẽ quét vào nó) |
+  | 6 | Vào trạm sạc báo va chạm, xe chui chéo | Xe trong vòng 0.5 m quanh staging thì `docking_server` bỏ qua bước tới staging; lúc khởi động xe đứng ngay đó, quay lưng về trạm | Tự đi thẳng vào staging dọc trục trạm rồi mới `DockRobot` (như với kệ) |
+  | 7 | Vẫn báo va chạm khi xe chỉ còn cách dock 3–7 cm, trên trục | Bản thân khối tiếp điểm (lidar thấy) nằm ngay rìa vùng bỏ qua va chạm 0.3 m quanh đích | `dock_collision_threshold: 0.45`; kiểm lại: các lần chui gầm kệ vẫn qua |
+- **Kết quả** (pin đầu 45 %, hao / sạc nhanh gấp 8, 3 đơn, bài thử tự bấm xác nhận):
+  - 3/3 đơn xong (77, 70, 57 s).
+  - Sau đơn 1 pin 30.3 % < 40 % → dừng nhận đơn, vào trạm ngay lần đầu, sạc 28.3 → 80.4 % trong 187 s (mô phỏng), rời trạm làm đơn 2, 3; hết đơn thì về sạc.
+  - Chỉ có 1 lần chạy đạt sau các bản sửa; trước đó 5 lần thử lộ 7 sự cố ở bảng trên.
+- **Còn lại:** chưa xử lý pin cạn giữa đơn (pin mô phỏng xuống 0 % vẫn chạy); vị trí tiếp điểm dựa vào AMCL (±5 cm), xe thật cần tiếp điểm lò xo đủ rộng hoặc nhận diện trạm sạc.
+- **Bài học:** vật cản thật mà cảm biến không thấy là nguy hiểm, kể cả khi "cố ý" làm vậy để bản đồ khỏi đổi; sửa bản đồ rẻ hơn nhiều so với tìm ra vì sao xe "đi" 5 m mà vẫn đứng yên.
+
 ---
 
 ## 5. Tổng hợp sai lầm và bài học
@@ -472,6 +497,8 @@ Các sự cố gặp phải, theo thứ tự:
 | Kiva | Xoá costmap sai thời điểm (lúc bắt đầu nâng) | Nghĩ tới dữ liệu cũ còn trong bộ đệm khi đổi chế độ lọc |
 | Kiểm thử | Để log loạt thử dài ở `/tmp` của WSL | Log vào thư mục bền, chạy tách khỏi phiên làm việc |
 | Kiểm thử | Sửa workspace trong lúc loạt thử đang dùng nó | Làm việc khác trên nhánh / thư mục khác, hoặc chờ loạt thử xong |
+| Kiva | Làm trạm sạc thấp hơn lidar "để bản đồ khỏi đổi" | Vật cản thật phải thấy được bằng cảm biến; lập lại bản đồ |
+| Kiva | Chính sách pin chỉ so với ngưỡng | Tính cả phần pin cần cho việc sắp làm |
 
 ## 6. Vấn đề còn mở
 Đã giải quyết (xem 4.6): AMCL lệch ở khu phía đông; "collision ahead" trong lối hẹp (từ 24 lần một chặng xuống 0–4 lần một nhiệm vụ).
@@ -483,7 +510,7 @@ Các sự cố gặp phải, theo thứ tự:
 5. **Node Python trong mô phỏng tốn CPU vì `/clock`:** đã giảm từ 38–75 % xuống 30–48 % mỗi node nhờ bước 3 ms (mục 4.8); vẫn còn vì `/clock` 333 tin/s. Chỉ có trong mô phỏng.
 6. **Dashboard chưa có đăng nhập:** chỉ mở trong LAN / Tailscale.
 7. **Nav2 thỉnh thoảng không khởi động xong:** container nạp node nhưng phản hồi dịch vụ `load_node` cho launch bị timeout, launch chờ mãi (1/10 lần chạy ngày 08/10). Chưa tìm nguyên nhân; khi gặp thì chạy lại.
-8. **Kiva:** lấy kệ đã chui theo chân kệ (lệch ngang ≤ 0.9 cm, mục 4.10) nhưng xe dừng quá tâm kệ 4–6 cm; trả kệ vẫn theo bản đồ. Đã có đơn hàng (mục 4.11); chưa có pin, xử lý sự cố (giai đoạn 4–5).
+8. **Kiva:** lấy kệ đã chui theo chân kệ (lệch ngang ≤ 0.9 cm, mục 4.10) nhưng xe dừng quá tâm kệ 4–6 cm; trả kệ vẫn theo bản đồ. Đã có đơn hàng (mục 4.11), pin và tự sạc (mục 4.12); chưa xử lý sự cố tự động (giai đoạn 5).
 
 ## 7. Cách ghi tiếp tài liệu này
 Mỗi khi xong một phần việc hoặc sửa xong một sự cố, thêm vào mục tương ứng theo quy ước ở đầu file: mục tiêu, cách làm, sai lầm, nguyên nhân, cách sửa, kết quả có số liệu, bài học. Quy tắc này nằm trong skill `.claude/skills/report-log`.

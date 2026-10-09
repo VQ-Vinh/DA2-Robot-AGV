@@ -424,26 +424,27 @@ docking_server:
       staging_x_offset: -1.0
       use_external_detection_pose: false
       use_stall_detection: false
+    # AGV: tram sac (dock charger_tram_sac). Theo vi tri tren ban do: KHONG bat external detection
+    # (topic detected_dock_pose la cua shelf_detector -> xe se chui vao ke thay vi vao tram sac).
+    # "Dang sac" = dong /battery_state > charging_threshold (battery_sim / INA226 tren xe that).
     simple_charging_dock:
       plugin: 'opennav_docking::SimpleChargingDock'
       docking_threshold: 0.05
       staging_x_offset: -0.7
-      use_external_detection_pose: true
-      use_battery_status: false # true
-      use_stall_detection: false # true
+      use_external_detection_pose: false
+      use_battery_status: true
+      charging_threshold: 0.5
+      use_stall_detection: false
 
-      external_detection_timeout: 1.0
-      external_detection_translation_x: -0.18
-      external_detection_translation_y: 0.0
-      external_detection_rotation_roll: -1.57
-      external_detection_rotation_pitch: -1.57
-      external_detection_rotation_yaw: 0.0
-      filter_coef: 0.1
-
-    # Dock instances: moi o ke la mot dock, SINH TU DONG tu agv_mission/config/shelves.yaml
+    # Dock instances: moi o ke la mot dock + tram sac, SINH TU DONG tu agv_mission/config/shelves.yaml
+    # va stations.yaml
     # boi agv_gazebo/scripts/make_warehouse.py (khong sua tay giua 2 dong danh dau)
     # BEGIN DOCKS (make_warehouse.py)
-    docks: ['slot_N1', 'slot_N2', 'slot_N3', 'slot_N4', 'slot_N5', 'slot_S1', 'slot_S2', 'slot_S3', 'slot_S4', 'slot_S5']
+    docks: ['slot_N1', 'slot_N2', 'slot_N3', 'slot_N4', 'slot_N5', 'slot_S1', 'slot_S2', 'slot_S3', 'slot_S4', 'slot_S5', 'charger_tram_sac']
+    charger_tram_sac:
+      type: 'simple_charging_dock'
+      frame: map
+      pose: [-0.45, 0.0, 3.14159]
     slot_N1:
       type: 'shelf_dock'
       frame: map
@@ -498,7 +499,10 @@ docking_server:
       projection_time: 5.0
       # AGV: ten dung la simulation_time_step (file mau ghi simulation_step, bi bo qua)
       simulation_time_step: 0.1
-      dock_collision_threshold: 0.3
+      # AGV: bo qua va cham trong 0.45 m quanh dich (= tam dock lui them 0.25 m). 0.3 (mac dinh) thi
+      # khoi tiep diem tram sac (vat can lidar thay) bi tinh la va cham khi xe con cach dock 3-7 cm
+      # (REPORT.md 4.12). Voi ke: chi bo qua ~20 cm cuoi, luc xe da can theo chan ke (+-1 cm).
+      dock_collision_threshold: 0.45
 
 loopback_simulator:
   ros__parameters:
