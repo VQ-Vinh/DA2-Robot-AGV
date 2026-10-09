@@ -68,6 +68,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 08/10/2026 | Kho Kiva, giai đoạn 5: xử lý sự cố | #17 |
 | 09/10/2026 | Xe vòng vòng / trả kệ lệch: vùng chết động cơ, kiểm tra tư thế, khoá kệ | #17 |
 | 09/10/2026 | Lidar lệch bản đồ (bias con quay), cửa sổ Gazebo crash (driver WSL) | #17 |
+| 09/10/2026 | Gộp #14–#17 vào `main`; README gốc thành trang giới thiệu có sơ đồ (kiến trúc, tiến độ, cấu trúc repo) | #18 |
 
 ---
 
