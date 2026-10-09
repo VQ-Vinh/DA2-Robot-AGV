@@ -61,7 +61,7 @@
   gz_type_name: "gz.msgs.Contacts"
   direction: GZ_TO_ROS
 
-- ros_topic_name: "/imu"
+- ros_topic_name: "/imu/raw"     # imu_bias (agv_localization) tru bias gyro -> /imu
   gz_topic_name: "/imu"
   ros_type_name: "sensor_msgs/msg/Imu"
   gz_type_name: "gz.msgs.IMU"
