@@ -5,7 +5,7 @@ ghi quy dao 20 Hz vao ~/agv_tests/motion_<tag>.csv, in:
   - sau buoc tra ke (return_dock): lech huong xe so voi truc o, lech ngang / doc
   - sau don: ke lech tam o, ke xoay
   - ke lech so voi xe luc cho nguoi lay hang (xe dung yen; do bang gz model, mat ~1 s nen khong do luc chay)
-  - "AMCL sai max": chi tham khao, /amcl_pose chi phat khi AMCL cap nhat nen co the cu
+  - "AMCL sai max": vi tri xe theo TF map -> base_link (AMCL + odom) so voi vi tri that
 Dung de tim cho xe "vong vong" (REPORT.md 4.14). Chay cung sim.launch.py nav:=true (Gazebo + order_manager).
 Doi so: tag, danh sach ke cach nhau dau phay (mac dinh 8 ke)."""
 import json
@@ -18,10 +18,11 @@ import threading
 import time
 
 import rclpy
-from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
+from rclpy.time import Time
 from std_msgs.msg import String
+from tf2_ros import Buffer, TransformException, TransformListener
 
 TAG = sys.argv[1] if len(sys.argv) > 1 else 'm'
 SHELVES = sys.argv[2].split(',') if len(sys.argv) > 2 else \
@@ -41,9 +42,17 @@ def on_gt(m):
     st['gt'] = (p.position.x + 4.5, p.position.y, yaw_of(p.orientation))
 
 
-def on_amcl(m):
-    p = m.pose.pose
-    st['amcl'] = (p.position.x, p.position.y, yaw_of(p.orientation))
+tf_buf = Buffer()
+TransformListener(tf_buf, n)
+
+
+def amcl_pose():
+    """Vi tri xe theo localization (TF map -> base_link). /amcl_pose chi phat khi AMCL cap nhat nen co the cu."""
+    try:
+        t = tf_buf.lookup_transform('map', 'base_link', Time())
+    except TransformException:
+        return None
+    return t.transform.translation.x, t.transform.translation.y, yaw_of(t.transform.rotation)
 
 
 n.create_subscription(String, '/order/state', lambda m: st.__setitem__('state', json.loads(m.data)),
@@ -51,8 +60,6 @@ n.create_subscription(String, '/order/state', lambda m: st.__setitem__('state', 
 n.create_subscription(String, '/order/status', lambda m: st['log'].append((time.time(), m.data)),
                       QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL))
 n.create_subscription(Odometry, '/ground_truth', on_gt, qos_profile_sensor_data)
-n.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', on_amcl,
-                      QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
 cmd = n.create_publisher(String, '/order/command', 10)
 os.makedirs(os.path.expanduser('~/agv_tests'), exist_ok=True)
 csv = open(os.path.expanduser(f'~/agv_tests/motion_{TAG}.csv'), 'w')
@@ -165,8 +172,9 @@ def tick():
                 docks.append({'order': cur_stat.oid, 'yaw_err': math.degrees(wrap(gt[2] - sl['yaw'])),
                               'lon': ex * c + ey * sn, 'lat': -ex * sn + ey * c})
         cur_stat = StepStat(oid, step)
-    cur_stat.add(gt, st['amcl'])
-    a = st['amcl'] or (float('nan'),) * 3
+    a = amcl_pose()
+    cur_stat.add(gt, a)
+    a = a or (float('nan'),) * 3
     csv.write(f'{time.time():.2f},{oid},{step},{gt[0]:.3f},{gt[1]:.3f},{gt[2]:.3f},{a[0]:.3f},{a[1]:.3f},{a[2]:.3f}\n')
 
 
