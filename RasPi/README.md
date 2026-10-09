@@ -95,7 +95,7 @@ Sự cố thường gặp:
 | Hiện tượng | Cách xử lý |
 |---|---|
 | Không cửa sổ nào hiện, hoặc tiêu đề cửa sổ có `[WARN:COPY MODE]` | WSLg bị treo: chạy `wsl --shutdown` trong PowerShell rồi mở lại Ubuntu |
-| Cửa sổ Gazebo tắt (driver GPU của WSL thỉnh thoảng crash khi khởi tạo OpenGL) | Mô phỏng, RViz, SLAM vẫn chạy vì server và cửa sổ Gazebo là 2 tiến trình riêng. Mở lại cửa sổ ở terminal khác: `gz sim -g --gui-config ~/agv_ws/install/agv_gazebo/share/agv_gazebo/config/gui.config` |
+| Cửa sổ Gazebo tắt (driver NVIDIA D3D12 của WSL segfault khi khởi tạo OpenGL cùng lúc với RViz, ~1/4 lần chạy) | Launch tự mở lại cửa sổ (tối đa 4 lần, log "Cua so Gazebo crash (driver GPU), mo lai"). Mô phỏng, RViz, SLAM vẫn chạy vì server và cửa sổ là 2 tiến trình riêng. Mở tay: `gz sim -g --gui-config ~/agv_ws/install/agv_gazebo/share/agv_gazebo/config/gui.config` |
 | RViz báo lỗi `indexed_8bit_image ... GLSL link result` | Lỗi đã biết của rviz2 ([ros2/rviz#463](https://github.com/ros2/rviz/issues/463)), bản đồ vẫn hiện bình thường, bỏ qua |
 | `ros2 topic echo/list` không ra gì | `ros2 daemon stop; ros2 daemon start`, hoặc thêm `--no-daemon` |
 
@@ -145,13 +145,13 @@ Bảng Teleop trong Gazebo cũng đi qua `motor_model` (bridge chuyển gz `/cmd
 ```
 Gazebo DiffDrive -> /sim/wheel_odom -> wheel_odom (thêm covariance) -> /wheel/odom --+
                                                                                      +--> EKF -> /odom + TF odom -> base_footprint
-Gazebo IMU ------------------------------------------------------------> /imu --------+
+Gazebo IMU -> /imu/raw -> imu_bias (trừ bias gyro, học lúc bánh đứng yên) -> /imu ---+
 ```
 
 - Odom bánh xe tính góc rất kém vì skid-steer trượt ngang khi quay. EKF lấy **vx** từ bánh xe và **tốc độ quay wz từ gyro** (cấu hình và giải thích trong `agv_localization/config/ekf.yaml`).
 - Không dùng yaw tuyệt đối của BNO055: nó dựa vào từ kế, trong kho nhiều sắt thép nên không tin được.
-- Gyro trong mô phỏng có bias nhỏ (~0.03 °/s) giống IMU thật, nên góc vẫn trôi chậm theo thời gian. Phần trôi này để SLAM/AMCL sửa ở bước sau.
-- Trên xe thật, node cầu nối STM32 phải gửi `/wheel/odom` **có covariance** (giống `wheel_odom.py`) và BNO055 gửi `/imu`; khi đó chạy `ros2 launch agv_localization ekf.launch.py` là xong.
+- Gyro trong mô phỏng có bias nhỏ (~0.03 °/s) giống IMU thật. Không bù thì xe đứng yên 10 phút góc trôi 24°, và AMCL không kéo lại được (lidar lệch hẳn bản đồ, REPORT.md 4.15). Node `imu_bias` (agv_localization, `ekf.launch.py` tự chạy) coi mọi tốc độ quay đo được khi bánh đứng yên quá 1 s là bias, lấy trung bình trượt 5 s rồi trừ đi. Sau khi bù: đứng yên 5 phút trôi 0.05°.
+- Trên xe thật, node cầu nối STM32 phải gửi `/wheel/odom` **có covariance** (giống `wheel_odom.py`) và BNO055 gửi **`/imu/raw`**; khi đó chạy `ros2 launch agv_localization ekf.launch.py` là xong.
 
 ## Đo sai số odom
 
@@ -362,7 +362,8 @@ agv_cmd.py ──/mission/command──► mission_server ──NavigateToPose�
 | `/scan` | `sensor_msgs/LaserScan` | `payload_manager` → SLAM, AMCL, Nav2 |
 | `/lift/command`, `/lift/state`, `/lift/has_load` | `std_msgs/String`, `String`, `Bool` | cơ cấu nâng (`lift_sim` / cầu nối STM32) |
 | `/lift/cmd_pos`, `/lift/contact` | `std_msgs/Float64`, `ros_gz_interfaces/Contacts` | `lift_sim` ↔ Gazebo |
-| `/imu` (100 Hz) | `sensor_msgs/Imu` | Gazebo → ROS |
+| `/imu/raw` (100 Hz) | `sensor_msgs/Imu` | Gazebo → ROS (xe thật: BNO055) → `imu_bias` |
+| `/imu` | `sensor_msgs/Imu` | `imu_bias` (đã trừ bias gyro) → EKF |
 | `/joint_states`, `/clock` | | Gazebo → ROS |
 
 ## Kích thước xe
