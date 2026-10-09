@@ -209,6 +209,7 @@ flowchart LR
     R["📂 Src"] --> RP["📂 RasPi/src<br/>ROS 2"]
     R --> ST["📂 STM32<br/>firmware"]
     R --> RE["📄 REPORT.md<br/>nhật ký"]
+    R --> CA["📂 CAD<br/>mô hình FreeCAD"]
     RP --> D["agv_description<br/>URDF"]
     RP --> G["agv_gazebo<br/>world · sim · bài thử"]
     RP --> L["agv_localization<br/>EKF · imu_bias"]
