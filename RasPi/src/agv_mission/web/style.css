@@ -18,6 +18,7 @@
   --path: #2563eb;
   --robot: #e11d48;
   --keepout: #ef4444;
+  --shelf: #a16207;
   --st-charge: #16a34a;
   --st-pick: #ea8c00;
   --st-inbound: #3b82f6;
@@ -46,6 +47,7 @@
     --path: #60a5fa;
     --robot: #fb7185;
   --keepout: #f87171;
+  --shelf: #d4a24c;
     --st-charge: #22c55e;
     --st-pick: #f59e0b;
     --st-inbound: #60a5fa;
@@ -73,6 +75,7 @@
   --path: #60a5fa;
   --robot: #fb7185;
   --keepout: #f87171;
+  --shelf: #d4a24c;
   --st-charge: #22c55e;
   --st-pick: #f59e0b;
   --st-inbound: #60a5fa;
@@ -326,6 +329,43 @@ button, select, input { font: inherit; color: inherit; }
 .log li time { color: var(--muted); margin-right: 6px; }
 .log li.sum { color: var(--ok); font-weight: 600; }
 .log li.err { color: var(--danger); }
+
+/* don hang */
+.order-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.order-head h2 { margin: 0; }
+.order-card h3 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+.alert {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 10px; margin-bottom: 8px;
+  border: 1px solid var(--danger); border-radius: 8px;
+  color: var(--danger); font-weight: 600;
+}
+.alert[hidden] { display: none; }
+.o-current { color: var(--muted); margin-bottom: 8px; }
+.o-current b { color: var(--text); }
+.btn.wide { width: 100%; margin-bottom: 10px; }
+.btn[hidden] { display: none; }
+.o-form { display: grid; grid-template-columns: 1fr 1fr 80px auto; gap: 6px; }
+.o-form select {
+  min-width: 0; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2);
+}
+.o-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.o-list:empty::after { content: "Trống"; color: var(--muted); font-size: 12px; }
+.o-list li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 6px 4px 8px; background: var(--surface-2); border-radius: 6px; font-size: 13px;
+}
+.o-list li .o-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.o-list li .o-id { color: var(--muted); font-variant-numeric: tabular-nums; }
+.o-list li button { border: 0; background: transparent; cursor: pointer; color: var(--muted); padding: 2px 6px; border-radius: 4px; }
+.o-list li button:hover { color: var(--text); background: var(--surface); }
+.badge { font-size: 11px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+.badge.done { color: var(--ok); border-color: var(--ok); }
+.badge.failed { color: var(--danger); border-color: var(--danger); }
+.badge.running { color: var(--accent); border-color: var(--accent); }
+.badge.prio { color: var(--warn); border-color: var(--warn); }
+.o-stats { margin-top: 8px; font-size: 12px; color: var(--muted); }
 
 /* thong bao */
 .toast {

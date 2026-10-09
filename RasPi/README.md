@@ -285,6 +285,25 @@ Kết quả (6 lần mỗi cấu hình, 3 kệ ở 2 dãy: `ke_01`, `ke_03`, `ke
 
 Bộ điều khiển docking nắn được cả góc lệch 66° ở staging nhờ khe 15 cm giữa xe và chân kệ. Hạ vùng chết xuống 50 RPM thì xe tới staging thẳng hơn 4 lần và đặt kệ chính xác hơn, đổi lại chạy chậm hơn ~20 s.
 
+## Đơn hàng: `order_manager`
+
+Một đơn = "đưa kệ X tới trạm lấy hàng Y". Node `order_manager.py` (agv_mission, chạy sẵn cùng `mission.launch.py` / `sim.launch.py nav:=true`, dùng chung xe thật) giữ **hàng đợi** và làm lần lượt:
+
+```
+tới trước ô (thẳng trục ô) -> chui gầm (shelf_dock, theo chân kệ) -> nâng -> lùi ra -> chở tới trạm
+-> CHỜ NGƯỜI XÁC NHẬN đã lấy hàng -> tới trước ô -> trả kệ (slot_dock) -> hạ -> lùi ra -> đơn tiếp / về trạm sạc
+```
+
+- **Lệnh** (`/order/command`, hoặc trên dashboard): `add <kệ> <trạm> [ưu tiên]` (ưu tiên lớn làm trước), `cancel <id>` (đơn đang chờ; đơn đang chạy chỉ huỷ được trước khi nâng kệ), `confirm` (người ở trạm đã lấy hàng), `pause` / `resume` (dừng / tiếp nhận đơn mới), `ack` (đã xử lý lỗi).
+- **Trạng thái:** `/order/state` (JSON, giữ tin cuối): hàng đợi theo đúng thứ tự sẽ làm, đơn đang chạy + bước, vị trí từng kệ, lịch sử, thống kê. Nhật ký: `/order/status`.
+- **Dữ liệu:** SQLite `~/.agv/orders.db` (bảng `orders`, `shelves`). Mô phỏng nạp lại vị trí kệ từ `shelves.yaml` mỗi lần chạy (`reset_shelves:=true`, vì world cũng đặt lại kệ). Đơn đang chạy lúc mất điện được đánh dấu lỗi khi khởi động lại.
+- **Lỗi:** mỗi chặng thử lại 1 lần (xoá costmap). Lỗi trước khi nâng kệ → đơn "lỗi", làm đơn sau. Lỗi khi **đang chở kệ** → xe dừng, dashboard báo đỏ, chờ người xử lý rồi bấm "Đã xử lý" (`ack`).
+- `auto_confirm_s:=N` tự xác nhận sau N giây (thử nghiệm); mặc định 0 = chờ người bấm.
+- **Dashboard** có thẻ *Đơn hàng*: tạo đơn (kệ, trạm, thường/gấp), hàng đợi (huỷ), nút **"Đã lấy hàng xong — trả kệ"** khi xe chờ ở trạm, lịch sử, thời gian trung bình; bản đồ vẽ từng kệ ở ô của nó, kệ đang chở vẽ theo xe.
+- Không dùng song song với nhiệm vụ của `mission_server` (cả hai cùng gửi đích cho Nav2).
+
+Thử trong mô phỏng (3 đơn, 1 đơn gấp, 1 đơn huỷ, tự bấm xác nhận sau 3 s), 2 lần: mỗi lần **3/3 đơn xong, đơn huỷ không chạy, 0 lỗi**; đơn gấp chạy trước đơn thường tạo trước nó; 59–111 s mỗi đơn (TB 85 s); kệ về ô lệch 1.7–8.1 cm. Lần 2 có 2 chặng (1 lần chui gầm, 1 lần lùi ra) báo va chạm, thử lại thì qua.
+
 ## Nhiệm vụ kho: `agv_mission`
 
 ```

@@ -34,6 +34,21 @@ def generate_launch_description():
                 'repeat': ParameterValue(LaunchConfiguration('repeat'), value_type=int),
             }],
             output='screen'),
+        # Quan ly don hang kieu Kiva (lay ke -> tram -> tra ke). Mo phong: reset_shelves:=true vi
+        # world dat lai ke vao o goc moi lan chay; xe that giu vi tri ke trong SQLite.
+        DeclareLaunchArgument('reset_shelves', default_value='false',
+                              description='Nap lai vi tri ke tu shelves.yaml (mo phong)'),
+        DeclareLaunchArgument('auto_confirm_s', default_value='0.0',
+                              description='Tu xac nhan lay hang sau N giay (0 = cho nguoi bam)'),
+        Node(
+            package='agv_mission', executable='order_manager.py',
+            parameters=[{
+                'shelves_file': PathJoinSubstitution([pkg, 'config', 'shelves.yaml']),
+                'stations_file': PathJoinSubstitution([pkg, 'config', 'stations.yaml']),
+                'reset_shelves': ParameterValue(LaunchConfiguration('reset_shelves'), value_type=bool),
+                'auto_confirm_s': ParameterValue(LaunchConfiguration('auto_confirm_s'), value_type=float),
+            }],
+            output='screen'),
         DeclareLaunchArgument('dashboard', default_value='true', description='Chay web dashboard'),
         DeclareLaunchArgument('port', default_value='8080', description='Cong web dashboard'),
         Node(

@@ -63,6 +63,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 08/10/2026 | Giảm tải mô phỏng: bước vật lý 1 ms → 3 ms | #12 |
 | 08/10/2026 | Kho kiểu Kiva, giai đoạn 1: chui gầm, nâng, chở kệ | #13 |
 | 08/10/2026 | Kho Kiva, giai đoạn 2: nhận diện kệ bằng chân kệ | #14 |
+| 08/10/2026 | Kho Kiva, giai đoạn 3: quản lý đơn hàng | #15 |
 
 ---
 
@@ -418,6 +419,33 @@ Các sự cố gặp phải, theo thứ tự:
   - Bộ nhận diện thỉnh thoảng thấy "hình vuông" giả ở xa (ghép chân của các kệ / góc kệ cố định) nhưng luôn chọn kệ gần nhất phía trước nên chưa gây lỗi trong 12 lần thử.
 - **Bài học:** đo sai số so với đúng đối tượng cần chạm tới (kệ thật), không so với vị trí "lẽ ra" của nó (ô trên bản đồ).
 
+### 4.11. Kho Kiva, giai đoạn 3: quản lý đơn hàng (PR #15)
+- **Mục tiêu:** thay "nhiệm vụ cố định" bằng **đơn hàng** như kho thật: tạo đơn "đưa kệ X tới trạm Y", hàng đợi có ưu tiên, người ở trạm xác nhận đã lấy hàng, lịch sử và thống kê.
+- **Cách làm:**
+  - Node `order_manager.py`: chạy đơn trong một luồng riêng, gọi các action của Nav2 (`NavigateThroughPoses` tới trước ô, `DockRobot`/`UndockRobot`, `NavigateToPose` tới trạm) và topic cơ cấu nâng; ROS spin bằng `MultiThreadedExecutor` ở luồng khác để luồng đơn hàng chờ được kết quả action.
+  - Dữ liệu SQLite (thư viện chuẩn Python): bảng `orders` và `shelves` (kệ đang ở ô nào). Đơn đang chạy lúc tắt máy → đánh dấu lỗi khi khởi động lại.
+  - Mỗi chặng thử lại 1 lần sau khi xoá costmap. Lỗi khi đang chở kệ → xe dừng, chờ người bấm "Đã xử lý" (xử lý tự động để giai đoạn 5).
+  - Dashboard: thẻ *Đơn hàng* (tạo đơn, hàng đợi, nút xác nhận lấy hàng, lịch sử, thời gian TB); bản đồ vẽ từng kệ ở ô của nó, kệ đang chở vẽ theo xe. Lệnh đi qua `POST /api/command` với tiền tố `order`.
+- **Kết quả** (mô phỏng, 2 lần, mỗi lần: 3 đơn `ke_03`, `ke_06` thường, `ke_01` gấp, thêm `ke_07` rồi huỷ; bài thử tự bấm xác nhận sau 3 s):
+
+  | | Lần 1 | Lần 2 |
+  |---|---|---|
+  | Đơn xong / huỷ / lỗi | 3 / 1 / 0 | 3 / 1 / 0 |
+  | Thứ tự chạy | ke_03 → **ke_01 (gấp)** → ke_06 | ke_03 → **ke_01 (gấp)** → ke_06 |
+  | Thời gian mỗi đơn | 59–98 s | 76–111 s |
+  | Kệ về ô lệch | 1.7–3.9 cm | 2.8–8.1 cm |
+  | Chặng phải thử lại | 0 | 2 (chui gầm, lùi ra: "Collision detected"), thử lại đều qua |
+
+  `ke_03` chạy đầu vì đơn của nó tạo trước khi các đơn kia vào hàng đợi.
+- **Sai lầm / sự cố:**
+
+  | # | Sự cố | Nguyên nhân | Cách sửa |
+  |---|---|---|---|
+  | 1 | Dashboard xếp hàng đợi theo số đơn, không theo thứ tự xe sẽ làm | `/order/state` lọc đơn chờ theo id | Sắp theo (ưu tiên giảm dần, id tăng dần) giống cách chọn đơn |
+  | 2 | Lần chạy thử đầu không có log nào | Lệnh `wsl` thoát ngay sau `nohup setsid ... &`, tiến trình nền chưa kịp tách ra đã bị kết thúc cùng phiên | Đợi vài giây trước khi thoát `wsl` |
+- **Còn lại:** chưa dừng khẩn / xử lý sự cố tự động (giai đoạn 5); chưa có pin và tự về sạc (giai đoạn 4); `order_manager` và `mission_server` chưa loại trừ nhau (dùng cùng lúc sẽ tranh điều khiển xe).
+- **Bài học:** thử lại một lần sau khi xoá costmap gỡ được lỗi va chạm "ảo" thỉnh thoảng gặp; nhưng phải phân biệt lỗi trước và sau khi nâng kệ, vì khi đang chở thì không được tự bỏ đơn.
+
 ---
 
 ## 5. Tổng hợp sai lầm và bài học
@@ -455,7 +483,7 @@ Các sự cố gặp phải, theo thứ tự:
 5. **Node Python trong mô phỏng tốn CPU vì `/clock`:** đã giảm từ 38–75 % xuống 30–48 % mỗi node nhờ bước 3 ms (mục 4.8); vẫn còn vì `/clock` 333 tin/s. Chỉ có trong mô phỏng.
 6. **Dashboard chưa có đăng nhập:** chỉ mở trong LAN / Tailscale.
 7. **Nav2 thỉnh thoảng không khởi động xong:** container nạp node nhưng phản hồi dịch vụ `load_node` cho launch bị timeout, launch chờ mãi (1/10 lần chạy ngày 08/10). Chưa tìm nguyên nhân; khi gặp thì chạy lại.
-8. **Kiva:** lấy kệ đã chui theo chân kệ (lệch ngang ≤ 0.9 cm, mục 4.10) nhưng xe dừng quá tâm kệ 4–6 cm; trả kệ vẫn theo bản đồ. Chưa có đơn hàng, pin, xử lý sự cố (giai đoạn 3–5). Dashboard chưa vẽ vị trí kệ đang được chở.
+8. **Kiva:** lấy kệ đã chui theo chân kệ (lệch ngang ≤ 0.9 cm, mục 4.10) nhưng xe dừng quá tâm kệ 4–6 cm; trả kệ vẫn theo bản đồ. Đã có đơn hàng (mục 4.11); chưa có pin, xử lý sự cố (giai đoạn 4–5).
 
 ## 7. Cách ghi tiếp tài liệu này
 Mỗi khi xong một phần việc hoặc sửa xong một sự cố, thêm vào mục tương ứng theo quy ước ở đầu file: mục tiêu, cách làm, sai lầm, nguyên nhân, cách sửa, kết quả có số liệu, bài học. Quy tắc này nằm trong skill `.claude/skills/report-log`.
