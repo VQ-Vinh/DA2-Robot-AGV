@@ -1,0 +1,80 @@
+# Mo phong co cau nang trong FreeCAD: mat nang + 4 ong dai oc di len / xuong theo hanh trinh.
+# Cach chay: mo CAD/agv.FCStd, roi Macro -> Macros... -> chon file nay -> Execute.
+# Chay lai luc dang chay thi dung mo phong cu va bat dau lai.
+#
+# Macro chi doi vi tri hien thi cua cum "LiftMoving" (tam go bieu thuc Placement, xong thi gan lai),
+# khong sua bang Params va khong luu file.
+import FreeCAD as App
+import FreeCADGui as Gui
+from PySide import QtCore
+
+SPEED = 6.7      # mm/s: vit T8 buoc 2 mm o 200 vong/phut
+PAUSE = 1.0      # s dung o moi dau hanh trinh
+CYCLES = 3       # so lan len + xuong
+FPS = 25
+
+if "agv" not in App.listDocuments():
+    from PySide import QtGui
+    QtGui.QMessageBox.information(Gui.getMainWindow(), "Mo phong co cau nang", "Hay mo file CAD/agv.FCStd truoc roi bam lai.")
+    raise SystemExit
+
+doc = App.getDocument("agv")
+Gui.setActiveDocument("agv")
+sh = doc.Params
+mov = doc.LiftMoving
+EXPR = "Params.plate2_top_z + Params.lift_gap + Params.lift_pos"
+z0 = float(sh.plate2_top_z) + float(sh.lift_gap)
+stroke = float(sh.lift_stroke)
+
+old = getattr(App, "_agv_lift_timer", None)
+if old is not None:
+    old.stop()
+
+travel = stroke / SPEED                 # thoi gian mot chieu
+period = 2 * (travel + PAUSE)           # len, dung, xuong, dung
+state = {"t": 0.0}
+bar = Gui.getMainWindow().statusBar()
+
+
+def pos_at(t):
+    t = t % period
+    if t < travel:
+        return stroke * t / travel
+    if t < travel + PAUSE:
+        return stroke
+    if t < 2 * travel + PAUSE:
+        return stroke * (1 - (t - travel - PAUSE) / travel)
+    return 0.0
+
+
+def set_pos(p):
+    pl = mov.Placement
+    pl.Base = App.Vector(pl.Base.x, pl.Base.y, z0 + p)
+    mov.Placement = pl
+
+
+def finish():
+    timer.stop()
+    mov.setExpression("Placement.Base.z", EXPR)
+    doc.recompute()
+    bar.showMessage("Mo phong co cau nang: xong", 5000)
+
+
+def tick():
+    state["t"] += 1.0 / FPS
+    if state["t"] >= CYCLES * period:
+        finish()
+        return
+    p = pos_at(state["t"])
+    set_pos(p)
+    bar.showMessage(
+        "Mat nang: %4.1f / %.0f mm  |  mat tren cao %5.1f mm  |  lan %d / %d"
+        % (p, stroke, z0 + p + float(sh.lift_plate_thick), int(state["t"] // period) + 1, CYCLES)
+    )
+
+
+mov.setExpression("Placement.Base.z", None)
+timer = QtCore.QTimer()
+timer.timeout.connect(tick)
+timer.start(int(1000 / FPS))
+App._agv_lift_timer = timer
