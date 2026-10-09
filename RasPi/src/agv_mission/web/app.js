@@ -370,7 +370,8 @@ function renderOrders() {
   const shelfSel = $('#o-shelf');
   const names = Object.keys(o.shelves || {}).sort();
   if (shelfSel.options.length !== names.length) {
-    shelfSel.replaceChildren(...names.map((n) => el('option', { value: n }, `${n} (ô ${o.shelves[n]})`)));
+    shelfSel.replaceChildren(...names.map((n) => el('option', { value: n },
+      `${n} (${o.shelves[n] ? 'ô ' + o.shelves[n] : 'chưa rõ vị trí'})`)));
   }
   const stSel = $('#o-station');
   const picks = Object.entries(cfg.stations).filter(([, st]) => st.kind === 'pick');
@@ -384,6 +385,9 @@ function renderOrders() {
   $('#o-pause').textContent = o.paused ? 'Tiếp tục' : 'Tạm dừng';
   $('#o-error').hidden = !o.error;
   $('#o-error-text').textContent = o.error ? `Xe dừng: ${o.error}` : '';
+  $('#o-alarm').hidden = !o.alarm || !!o.error;
+  $('#o-alarm').textContent = o.alarm ? `Cảnh báo: ${o.alarm}` : '';
+  $('#o-estop').disabled = !!o.error;
   const cur = o.orders.find((x) => x.id === o.current);
   $('#o-current').replaceChildren(cur
     ? el('span', {}, el('b', {}, `#${cur.id} ${cur.shelf} → ${label(cur.station)}`), ` — ${o.step_label || ''}`)
@@ -415,6 +419,7 @@ $('#o-add').addEventListener('click', () =>
   send(`order add ${$('#o-shelf').value} ${$('#o-station').value} ${$('#o-prio').value}`, false));
 $('#o-confirm').addEventListener('click', () => send('order confirm', false));
 $('#o-ack').addEventListener('click', () => send('order ack', false));
+$('#o-estop').addEventListener('click', () => send('order estop', false));
 $('#o-pause').addEventListener('click', () => send(orders && orders.paused ? 'order resume' : 'order pause', false));
 
 // ---------- tuong tac ban do ----------

@@ -44,7 +44,10 @@ def static_model(name, x, y, z, size, color, collision=True, yaw=0.0):
 
 
 def shelf_model(name, x, y, cfg):
-    """Ke mini 4 chan, mot link (vat ly that: xe nang thi ke nam tren mat nang nho ma sat)."""
+    """Ke mini 4 chan, mot link. Xe nang ke: lift_sim khoa ke vao mat nang (khop co dinh DetachableJoint,
+    giong chot dinh vi tren mat nang xe that), ha ke thi mo khoa. Chi nho ma sat thi ke truot toi 10 cm /
+    11 deg khi xe quay tai cho, chan ke lot ra ngoai vung loc scan thanh "vat can" sat xe (REPORT.md 4.14).
+    Plugin noi khop ngay khi thay model agv: lift_sim mo khoa het luc khoi dong."""
     s, leg, h0, top = cfg['size'], cfg['leg'], cfg['clearance'], cfg['height']
     m = cfg['mass'] + cfg['goods_mass']
     off = s / 2 - leg / 2
@@ -73,6 +76,11 @@ def shelf_model(name, x, y, cfg):
             f'<ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>\n'
             f'        {"".join(parts)}\n'
             f'      </link>\n'
+            f'      <plugin filename="gz-sim-detachable-joint-system" name="gz::sim::systems::DetachableJoint">'
+            f'<parent_link>link</parent_link><child_model>agv</child_model><child_link>lift_plate</child_link>'
+            f'<attach_topic>/shelf/{name}/attach</attach_topic><detach_topic>/shelf/{name}/detach</detach_topic>'
+            f'<output_topic>/shelf/{name}/state</output_topic><suppress_child_warning>true</suppress_child_warning>'
+            f'</plugin>\n'
             f'    </model>\n')
 
 

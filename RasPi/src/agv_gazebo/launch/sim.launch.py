@@ -9,7 +9,7 @@ Vi du:
   ros2 launch agv_gazebo sim.launch.py nav:=true mission:=tuan_tra    # + chay nhiem vu kho tu dong
 """
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, TimerAction
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (Command, LaunchConfiguration, PathJoinSubstitution,
@@ -42,13 +42,17 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(gz_sim_launch),
         launch_arguments={'gz_args': ['-r -s ', world], 'on_exit_shutdown': 'true'}.items())
 
-    # Mo cua so sau server vai giay, de 2 tien trinh khong khoi tao OpenGL cung luc
-    gazebo_gui = TimerAction(period=5.0, actions=[IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(gz_sim_launch),
-        launch_arguments={
-            # --gui-config: giao dien co them bang Teleop
-            'gz_args': ['-g --gui-config ', PathJoinSubstitution([gz_pkg, 'config', 'gui.config'])],
-            'on_exit_shutdown': 'false'}.items())],
+    # Mo cua so sau server vai giay. Driver NVIDIA D3D12 cua WSL thinh thoang segfault (exit 139) trong
+    # driCreateNewScreen khi cua so Gazebo va RViz cung tao man hinh OpenGL (1/4 lan chay, REPORT.md 4.14)
+    # -> chet vi segfault (139) thi tu mo lai, toi da 3 lan; nguoi dung tu dong cua so thi thoi. Chay thang
+    # `gz sim -g` (khong qua gz_sim.launch.py); GUI khong can bien moi truong plugin cua server.
+    gui_config = PathJoinSubstitution([gz_pkg, 'config', 'gui.config'])
+    gazebo_gui = TimerAction(period=5.0, actions=[ExecuteProcess(
+        # --gui-config: giao dien co them bang Teleop
+        cmd=['bash', '-c', ['for i in 1 2 3 4; do gz sim -g --gui-config ', gui_config, '; c=$?; '
+                            '[ $c -eq 139 ] || exit $c; echo "Cua so Gazebo crash (driver GPU), mo lai"; '
+                            'sleep 3; done']],
+        name='gazebo_gui', output='screen')],
         condition=UnlessCondition(headless))
 
     robot_state_publisher = Node(
@@ -56,11 +60,21 @@ def generate_launch_description():
         parameters=[{'robot_description': robot_description, 'use_sim_time': True}],
         output='screen')
 
+    # Cho xuat phat mac dinh ("auto"):
+    #   - lap ban do (slam:=true): world (-4.5, 0, 0) = goc frame map (ban do va shelves.yaml dua tren goc nay)
+    #   - con lai: dung tai tram sac (map (-0.45, 0, pi) = world (-4.95, 0)), nhu AMR that bat dau ngay o
+    #     tram; AMCL dat san vi tri nay (nav2.yaml). Xuat phat o goc map, quay lung ve tram sac, thi xe
+    #     phai di vong ra 1.9 m de vao sac va hay vao hong o lan dau (REPORT.md 4.13).
+    def auto(name, slam_value, dock_value):
+        v = LaunchConfiguration(name)
+        return PythonExpression(["'", v, "' if '", v, "' != 'auto' else ('", slam_value, "' if '", slam,
+                                 "' == 'true' else '", dock_value, "')"])
+
     spawn = Node(
         package='ros_gz_sim', executable='create',
         arguments=['-topic', 'robot_description', '-name', 'agv',
-                   '-x', LaunchConfiguration('x'), '-y', LaunchConfiguration('y'),
-                   '-z', '0.02', '-Y', LaunchConfiguration('yaw')],
+                   '-x', auto('x', '-4.5', '-4.95'), '-y', auto('y', '0.0', '0.0'),
+                   '-z', '0.02', '-Y', auto('yaw', '0.0', '3.14159')],
         output='screen')
 
     bridge = Node(
@@ -162,9 +176,10 @@ def generate_launch_description():
         DeclareLaunchArgument('rviz', default_value='true', description='Mo RViz'),
         DeclareLaunchArgument('steering', default_value='true',
                               description='Mo rqt_robot_steering (thanh truot lai xe)'),
-        DeclareLaunchArgument('x', default_value='-4.5', description='Vi tri xuat phat x (m)'),
-        DeclareLaunchArgument('y', default_value='0.0', description='Vi tri xuat phat y (m)'),
-        DeclareLaunchArgument('yaw', default_value='0.0', description='Huong xuat phat (rad)'),
+        DeclareLaunchArgument('x', default_value='auto',
+                              description='Xuat phat x (m, world). auto: goc map khi slam, tram sac khi khong'),
+        DeclareLaunchArgument('y', default_value='auto', description='Xuat phat y (m, world)'),
+        DeclareLaunchArgument('yaw', default_value='auto', description='Huong xuat phat (rad)'),
         DeclareLaunchArgument('slam', default_value='false',
                               description='true: chay slam_toolbox lap ban do'),
         DeclareLaunchArgument('nav', default_value='false',

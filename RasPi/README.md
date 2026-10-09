@@ -60,7 +60,7 @@ Build lại chỉ khi thêm file mới. Sửa file có sẵn (`.xacro`, `.sdf`, 
 ros2 launch agv_gazebo sim.launch.py nav:=true
 ```
 - RViz mở `agv_navigation/rviz/nav.rviz` (từ cấu hình mặc định của Nav2, gọn hơn): bản đồ trắng/đen, các ô kệ mini là vùng cấm, chấm đỏ = lidar, đường xanh = đường Nav2 lập, ô mờ quanh xe = local costmap. Global costmap (lớp tím/xanh phủ cả kho) tắt sẵn, muốn xem thì tick lại trong *Displays → Global Planner*.
-- Xe đã được đặt sẵn vị trí ban đầu. Nếu đặt xe chỗ khác (`x:= y:=`), bấm **2D Pose Estimate** rồi kéo chuột tại chỗ xe đứng.
+- Xe xuất phát **ngay ở trạm sạc** (đang sạc, mũi quay vào khối tiếp điểm, map (−0.45, 0), hướng π); AMCL đã đặt sẵn vị trí này. Khi chạy SLAM (`slam:=true`) xe tự xuất phát ở gốc bản đồ (world −4.5, 0). Nếu đặt xe chỗ khác (`x:= y:= yaw:=`, toạ độ world), bấm **2D Pose Estimate** rồi kéo chuột tại chỗ xe đứng.
 - Bấm **Nav2 Goal**, click vào điểm đích trên bản đồ rồi kéo chuột để chọn hướng. Xe tự lập đường (đường xanh) và đi tới.
 
 **Chạy nhiệm vụ kho** (bước 5). Tự chạy khi khởi động:
@@ -95,7 +95,7 @@ Sự cố thường gặp:
 | Hiện tượng | Cách xử lý |
 |---|---|
 | Không cửa sổ nào hiện, hoặc tiêu đề cửa sổ có `[WARN:COPY MODE]` | WSLg bị treo: chạy `wsl --shutdown` trong PowerShell rồi mở lại Ubuntu |
-| Cửa sổ Gazebo tắt (driver GPU của WSL thỉnh thoảng crash khi khởi tạo OpenGL) | Mô phỏng, RViz, SLAM vẫn chạy vì server và cửa sổ Gazebo là 2 tiến trình riêng. Mở lại cửa sổ ở terminal khác: `gz sim -g --gui-config ~/agv_ws/install/agv_gazebo/share/agv_gazebo/config/gui.config` |
+| Cửa sổ Gazebo tắt (driver NVIDIA D3D12 của WSL segfault khi khởi tạo OpenGL cùng lúc với RViz, ~1/4 lần chạy) | Launch tự mở lại cửa sổ (tối đa 4 lần, log "Cua so Gazebo crash (driver GPU), mo lai"). Mô phỏng, RViz, SLAM vẫn chạy vì server và cửa sổ là 2 tiến trình riêng. Mở tay: `gz sim -g --gui-config ~/agv_ws/install/agv_gazebo/share/agv_gazebo/config/gui.config` |
 | RViz báo lỗi `indexed_8bit_image ... GLSL link result` | Lỗi đã biết của rviz2 ([ros2/rviz#463](https://github.com/ros2/rviz/issues/463)), bản đồ vẫn hiện bình thường, bỏ qua |
 | `ros2 topic echo/list` không ra gì | `ros2 daemon stop; ros2 daemon start`, hoặc thêm `--no-daemon` |
 
@@ -113,7 +113,7 @@ Lái xe (chọn một):
 | Cửa sổ **rqt_robot_steering** | Mô phỏng + xe thật | 2 thanh trượt. Lần đầu **bỏ tick ô "stamped"** (bridge nhận `Twist`), rqt sẽ nhớ |
 | `ros2 run teleop_twist_keyboard teleop_twist_keyboard` | Mô phỏng + xe thật | Bàn phím trong terminal |
 
-Tham số: `rviz:=false`, `steering:=false`, `headless:=true` (không mở cửa sổ nào), `x:= y:= yaw:=` (vị trí xuất phát), `rpm_min:=0` (tắt vùng chết động cơ, xem mục dưới).
+Tham số: `rviz:=false`, `steering:=false`, `headless:=true` (không mở cửa sổ nào), `x:= y:= yaw:=` (vị trí xuất phát, world; mặc định `auto` = trạm sạc, hoặc gốc bản đồ khi SLAM), `rpm_min:=0` (tắt vùng chết động cơ, xem mục dưới).
 
 Chỉ xem model, không cần Gazebo: `ros2 launch agv_description display.launch.py`
 
@@ -145,13 +145,13 @@ Bảng Teleop trong Gazebo cũng đi qua `motor_model` (bridge chuyển gz `/cmd
 ```
 Gazebo DiffDrive -> /sim/wheel_odom -> wheel_odom (thêm covariance) -> /wheel/odom --+
                                                                                      +--> EKF -> /odom + TF odom -> base_footprint
-Gazebo IMU ------------------------------------------------------------> /imu --------+
+Gazebo IMU -> /imu/raw -> imu_bias (trừ bias gyro, học lúc bánh đứng yên) -> /imu ---+
 ```
 
 - Odom bánh xe tính góc rất kém vì skid-steer trượt ngang khi quay. EKF lấy **vx** từ bánh xe và **tốc độ quay wz từ gyro** (cấu hình và giải thích trong `agv_localization/config/ekf.yaml`).
 - Không dùng yaw tuyệt đối của BNO055: nó dựa vào từ kế, trong kho nhiều sắt thép nên không tin được.
-- Gyro trong mô phỏng có bias nhỏ (~0.03 °/s) giống IMU thật, nên góc vẫn trôi chậm theo thời gian. Phần trôi này để SLAM/AMCL sửa ở bước sau.
-- Trên xe thật, node cầu nối STM32 phải gửi `/wheel/odom` **có covariance** (giống `wheel_odom.py`) và BNO055 gửi `/imu`; khi đó chạy `ros2 launch agv_localization ekf.launch.py` là xong.
+- Gyro trong mô phỏng có bias nhỏ (~0.03 °/s) giống IMU thật. Không bù thì xe đứng yên 10 phút góc trôi 24°, và AMCL không kéo lại được (lidar lệch hẳn bản đồ, REPORT.md 4.15). Node `imu_bias` (agv_localization, `ekf.launch.py` tự chạy) coi mọi tốc độ quay đo được khi bánh đứng yên quá 1 s là bias, lấy trung bình trượt 5 s rồi trừ đi. Sau khi bù: đứng yên 5 phút trôi 0.05°.
+- Trên xe thật, node cầu nối STM32 phải gửi `/wheel/odom` **có covariance** (giống `wheel_odom.py`) và BNO055 gửi **`/imu/raw`**; khi đó chạy `ros2 launch agv_localization ekf.launch.py` là xong.
 
 ## Đo sai số odom
 
@@ -200,6 +200,7 @@ ros2 launch agv_navigation navigation.launch.py      # xe thật (cần /scan, /
 
 Làm theo [linorobot2](https://github.com/linorobot/linorobot2):
 - `agv_navigation/config/nav2.yaml` là **file mặc định của Nav2 Jazzy**, chỉ thay khối bộ điều khiển bằng khối của linorobot2. Khối đó dùng **RotationShim** (quay tại chỗ về hướng đường đi) kết hợp **Regulated Pure Pursuit** (bám đường, ~0.4 m/s). Kiểu chạy này hợp với xe có vùng chết.
+- Chỉnh theo vùng chết động cơ (REPORT.md 4.14): RPP không xin chậm hơn 0.35 m/s (`min_approach_linear_velocity`, `regulated_linear_scaling_min_speed`) và quay tại chỗ 1.5 rad/s; `velocity_smoother` gần như bỏ giới hạn gia tốc (động cơ tự giới hạn); docking nới `undock_linear/angular_tolerance` 0.10 m / 0.3 rad; `behavior_server` 20 Hz. Thiếu các chỉnh này thì xe quay tròn tại staging khi docking thử lại, vọt lố 30–80° sau mỗi lần quay tại chỗ, đi vòng quanh đích.
 - Đổi thêm: bán kính xe 0.25 m, lidar 10 m, AMCL đặt sẵn vị trí ban đầu ở gốc bản đồ, AMCL `alpha1–4: 0.05` và `z_hit/z_rand: 0.95/0.05` (xem mục dưới).
 - `navigation.launch.py` gọi thẳng `bringup_launch.py` của Nav2 (map_server + AMCL + navigation).
 
@@ -249,6 +250,8 @@ python3 agv_navigation/scripts/make_keepout_mask.py
 - `shelf_dock` (**lấy kệ**): chui theo **kệ thật**. Node `shelf_detector.py` (agv_navigation, dùng chung xe thật) tìm 4 chân kệ trong `/scan_raw` (4 cụm điểm nhỏ tạo hình vuông cạnh 0.72 m), phát tâm kệ lên `/detected_dock_pose`. Kệ trả về mỗi lần lệch vài cm, lâu dần sẽ lệch nhiều; AMCL cũng lệch ~5 cm, nên không tin vị trí ô trên bản đồ.
 - `slot_dock` (**trả kệ** vào ô trống, không có chân nào để nhận diện): theo vị trí ô trên bản đồ. Gửi `DockRobot` với `use_dock_id: false`, `dock_pose` = tâm ô, `dock_type: slot_dock`.
 - Tới staging qua một điểm cách thêm 1.2 m trên cùng trục ô (`NavigateThroughPoses`), để đoạn cuối là đường thẳng: quay tại chỗ với vùng chết thì vọt lố 30–50°.
+- **Kiểm tra tư thế trước khi nâng / hạ** (`checked_dock` trong `order_manager`): docking chỉ kiểm khoảng cách tới tâm ô, không kiểm hướng, nên có lúc báo xong khi xe lệch 22–50°. Lệch hướng > `dock_yaw_tol_deg` (8) hoặc, khi trả kệ, lệch vị trí > `dock_pos_tol` (0.10 m) thì lùi thẳng ra staging vào lại (`dock_attempts` 3). Lệch > `turn_min_deg` (40) thì quay tại chỗ bớt trước (Spin quay thừa ~`spin_coast_deg` 30°, nên lệch nhỏ không chỉnh tại chỗ được).
+- **Mô phỏng khoá kệ vào mặt nâng** khi nâng hết (plugin `DetachableJoint` trong mỗi kệ, `lift_sim` gửi `/shelf/<kệ>/attach|detach` qua `gz topic`), hạ thì mở khoá trước. Xe thật cần **chốt định vị** trên mặt nâng tương ứng. `lift_sim ... -p lock_shelves:=false` để chở chỉ bằng ma sát như trước.
 - Vùng cấm (ô kệ) **chỉ ở global costmap**: để ở local costmap thì bộ điều khiển docking coi mép vùng cấm là vật cản.
 - `docking_server` của Jazzy phát thẳng `cmd_vel` (không qua collision monitor), nên **giữ** kiểm tra va chạm của nó.
 
@@ -258,7 +261,10 @@ ros2 launch agv_gazebo sim.launch.py nav:=true
 ros2 run agv_gazebo shelf_transport_test.py --ros-args -p shelf:=ke_03 -p station:=tram_lay_hang
 # kệ đặt lệch khỏi tâm ô (dx m, dy m, dyaw độ); detect:=false để so với cách chui theo bản đồ
 ros2 run agv_gazebo shelf_transport_test.py --ros-args -p shelf:=ke_03 -p shelf_offset:="[0.08, -0.06, 4.0]" -p detect:=false
+# 8 đơn liên tiếp, đo quỹ đạo thật từng bước (góc quay thừa, tư thế khi trả kệ); CSV ở ~/agv_tests/motion_<tag>.csv
+ros2 run agv_gazebo motion_test.py m1
 ```
+Kết quả `motion_test.py` có vùng chết (REPORT.md 4.14): trước khi sửa 8/8 đơn xong, TB 105 s, nhưng có bước chui gầm / trả kệ quay thừa ~4200°; sau khi sửa 8/8, TB 88 s, quay thừa khi trả kệ TB 28° (max 75°), không lần nào Nav2 phải hồi phục.
 
 So sánh khi kệ bị dời lệch như sau nhiều lần trả kệ: (+8, −6 cm, 4°), (−7, +5 cm, −5°), (+10, 0 cm, 0°), mỗi kiểu thử `ke_03` và `ke_06` (vùng chết 100 RPM):
 
@@ -312,6 +318,21 @@ Kết quả (pin đầu 45 %, nhanh gấp 8, 3 đơn): 3/3 đơn xong; sau đơn
 
 Thử trong mô phỏng (3 đơn, 1 đơn gấp, 1 đơn huỷ, tự bấm xác nhận sau 3 s), 2 lần: mỗi lần **3/3 đơn xong, đơn huỷ không chạy, 0 lỗi**; đơn gấp chạy trước đơn thường tạo trước nó; 59–111 s mỗi đơn (TB 85 s); kệ về ô lệch 1.7–8.1 cm. Lần 2 có 2 chặng (1 lần chui gầm, 1 lần lùi ra) báo va chạm, thử lại thì qua.
 
+## Xử lý sự cố
+
+`order_manager` giám sát 5 Hz trong lúc chạy đơn:
+
+| Sự cố | Phát hiện | Xe làm gì | Người làm gì |
+|---|---|---|---|
+| Dừng khẩn | nút **DỪNG KHẨN** (`order estop`) | huỷ mọi action, vận tốc 0 | bấm **Đã xử lý** → xe làm tiếp đúng bước đang dở |
+| Đường bị chặn | Nav2 tự hồi phục (feedback `number_of_recoveries`) hoặc không tiến về đích > 15 s (`distance_remaining`) → cảnh báo vàng; > 60 s hoặc chặng lỗi hẳn → sự cố | dừng | dọn đường, **Đã xử lý** → đi tiếp |
+| Rơi kệ khi đang chở | mất tín hiệu "có kệ" > 1 s | dừng, đơn lỗi, kệ "chưa rõ vị trí" | đặt lại kệ, `order shelf <kệ> <ô>`, **Đã xử lý** |
+| Cơ cấu nâng lỗi | `/lift/state` = `error` | dừng | sửa, **Đã xử lý** |
+| Lỗi một bước khi đang chở kệ | bất kỳ | dừng (không bỏ đơn, không chạy lại từ đầu vì xe đang đội kệ) | **Đã xử lý** → làm lại bước đó |
+| Lỗi trước khi nâng kệ | bất kỳ | trả đơn về hàng đợi (tối đa 2 lần), làm đơn khác | — |
+
+Thử bằng gây sự cố có chủ ý trong mô phỏng (`agv_gazebo/scripts/fault_test.py`, chạy cùng `sim.launch.py nav:=true`): 3 tình huống (tường chắn ngang kho 75 s khi đang chở kệ; DỪNG KHẨN khi đang chở; dịch kệ ra khỏi xe khi đang chở): lần f7 **3/3 đạt** — cảnh báo rồi sự cố `duong_bi_chan`, gỡ tường + Đã xử lý → đơn xong; lần f10 2/3 (tường: có cảnh báo, đơn xong sau khi gỡ, nhưng chưa thành sự cố trong 75 s vì xe men theo tường về phía đích nên vẫn được tính là tiến); dừng khẩn xe đứng yên (0.0 cm trong 3 s) rồi làm tiếp, đơn xong; rơi kệ phát hiện sau 1.7 s, đơn lỗi, kệ chưa rõ vị trí → `shelf ke_02 N5` cập nhật đúng.
+
 ## Nhiệm vụ kho: `agv_mission`
 
 ```
@@ -341,7 +362,8 @@ agv_cmd.py ──/mission/command──► mission_server ──NavigateToPose�
 | `/scan` | `sensor_msgs/LaserScan` | `payload_manager` → SLAM, AMCL, Nav2 |
 | `/lift/command`, `/lift/state`, `/lift/has_load` | `std_msgs/String`, `String`, `Bool` | cơ cấu nâng (`lift_sim` / cầu nối STM32) |
 | `/lift/cmd_pos`, `/lift/contact` | `std_msgs/Float64`, `ros_gz_interfaces/Contacts` | `lift_sim` ↔ Gazebo |
-| `/imu` (100 Hz) | `sensor_msgs/Imu` | Gazebo → ROS |
+| `/imu/raw` (100 Hz) | `sensor_msgs/Imu` | Gazebo → ROS (xe thật: BNO055) → `imu_bias` |
+| `/imu` | `sensor_msgs/Imu` | `imu_bias` (đã trừ bias gyro) → EKF |
 | `/joint_states`, `/clock` | | Gazebo → ROS |
 
 ## Kích thước xe

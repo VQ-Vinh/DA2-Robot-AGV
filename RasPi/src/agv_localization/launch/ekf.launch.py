@@ -1,4 +1,5 @@
 """EKF gop /wheel/odom + /imu -> /odom va TF odom -> base_footprint.
+imu_bias: /imu/raw -> tru bias gyro (hoc luc banh dung yen) -> /imu.
 
   ros2 launch agv_localization ekf.launch.py                    # xe that
   ros2 launch agv_localization ekf.launch.py use_sim_time:=true # mo phong (sim.launch.py tu goi)
@@ -16,6 +17,8 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
+        # Khong dung use_sim_time: chi dung stamp cua tin IMU, tranh doc /clock (REPORT.md 4.8)
+        Node(package='agv_localization', executable='imu_bias.py', output='screen'),
         Node(
             package='robot_localization', executable='ekf_node', name='ekf_filter_node',
             parameters=[PathJoinSubstitution([FindPackageShare('agv_localization'), 'config', 'ekf.yaml']),
