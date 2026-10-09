@@ -9,7 +9,7 @@ Vi du:
   ros2 launch agv_gazebo sim.launch.py nav:=true mission:=tuan_tra    # + chay nhiem vu kho tu dong
 """
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, TimerAction
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (Command, LaunchConfiguration, PathJoinSubstitution,
@@ -42,13 +42,17 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(gz_sim_launch),
         launch_arguments={'gz_args': ['-r -s ', world], 'on_exit_shutdown': 'true'}.items())
 
-    # Mo cua so sau server vai giay, de 2 tien trinh khong khoi tao OpenGL cung luc
-    gazebo_gui = TimerAction(period=5.0, actions=[IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(gz_sim_launch),
-        launch_arguments={
-            # --gui-config: giao dien co them bang Teleop
-            'gz_args': ['-g --gui-config ', PathJoinSubstitution([gz_pkg, 'config', 'gui.config'])],
-            'on_exit_shutdown': 'false'}.items())],
+    # Mo cua so sau server vai giay. Driver NVIDIA D3D12 cua WSL thinh thoang segfault (exit 139) trong
+    # driCreateNewScreen khi cua so Gazebo va RViz cung tao man hinh OpenGL (1/4 lan chay, REPORT.md 4.14)
+    # -> chet vi segfault (139) thi tu mo lai, toi da 3 lan; nguoi dung tu dong cua so thi thoi. Chay thang
+    # `gz sim -g` (khong qua gz_sim.launch.py); GUI khong can bien moi truong plugin cua server.
+    gui_config = PathJoinSubstitution([gz_pkg, 'config', 'gui.config'])
+    gazebo_gui = TimerAction(period=5.0, actions=[ExecuteProcess(
+        # --gui-config: giao dien co them bang Teleop
+        cmd=['bash', '-c', ['for i in 1 2 3 4; do gz sim -g --gui-config ', gui_config, '; c=$?; '
+                            '[ $c -eq 139 ] || exit $c; echo "Cua so Gazebo crash (driver GPU), mo lai"; '
+                            'sleep 3; done']],
+        name='gazebo_gui', output='screen')],
         condition=UnlessCondition(headless))
 
     robot_state_publisher = Node(
