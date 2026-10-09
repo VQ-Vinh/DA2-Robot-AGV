@@ -76,3 +76,8 @@ $RECYCLE.BIN/
 STM32/tools/logs/
 *.png
 __pycache__/
+
+# ---------- FreeCAD ----------
+*.FCBak
+*.FCStd1
+CAD/parts/
