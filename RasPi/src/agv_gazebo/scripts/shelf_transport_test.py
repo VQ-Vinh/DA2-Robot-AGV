@@ -3,6 +3,9 @@
 
   ros2 launch agv_gazebo sim.launch.py nav:=true
   ros2 run agv_gazebo shelf_transport_test.py --ros-args -p shelf:=ke_03 -p station:=tram_lay_hang
+  # ke dat lech khoi tam o (dx m, dy m, dyaw deg) nhu sau nhieu lan tra ke; detect:=false de so voi
+  # cach chui gam theo vi tri o tren ban do
+  ... -p shelf_offset:="[0.08, -0.06, 4.0]" -p detect:=false
 
 Chuoi buoc (giong mot don hang, giai doan sau se do order_manager lam):
   toi staging (NavigateToPose, do sai so) -> chui gam (DockRobot) -> nang -> lui ra (UndockRobot)
@@ -56,6 +59,10 @@ class ShelfTest(Node):
         # Doan thang truoc staging (m), xem staging()
         self.straight = self.declare_parameter('straight_approach', 1.2).value
         self.slot = self.layout['shelves'][self.shelf]
+        # Lay ke: shelf_dock (theo chan ke shelf_detector tim) hoac slot_dock (theo o tren ban do)
+        self.detect = self.declare_parameter('detect', True).value
+        self.offset = list(self.declare_parameter('shelf_offset', [0.0, 0.0, 0.0]).value)
+        self.dock_type = None
 
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.lift_state, self.has_load, self.gt, self.localized = None, None, None, False
@@ -158,22 +165,66 @@ class ShelfTest(Node):
         self.spin(1.0)
         return ok, self.error_to(px, py, sl['yaw'])
 
-    def dock_slot(self):
+    def place_shelf(self):
+        """Dat ke lech khoi tam o (shelf_offset), qua dich vu set_pose cua Gazebo."""
+        dx, dy, dyaw = self.offset
+        if not any(self.offset):
+            return
+        sl = self.layout['slots'][self.slot]
+        x, y, yaw = sl['x'] - MAP_X + dx, sl['y'] - MAP_Y + dy, math.radians(dyaw)
+        req = (f'name: "{self.shelf}", position: {{x: {x}, y: {y}, z: 0.0}}, '
+               f'orientation: {{z: {math.sin(yaw / 2)}, w: {math.cos(yaw / 2)}}}')
+        subprocess.run(['gz', 'service', '-s', '/world/warehouse/set_pose', '--reqtype', 'gz.msgs.Pose',
+                        '--reptype', 'gz.msgs.Boolean', '--timeout', '3000', '--req', req],
+                       capture_output=True, text=True)
+        self.spin(2.0)
+        self.get_logger().info(f'dat {self.shelf} lech o {100 * dx:+.0f}, {100 * dy:+.0f} cm, {dyaw:+.0f} deg')
+
+    def error_to_shelf(self):
+        """Sai so xe so voi ke THAT (khong phai tam o): doc truc, ngang truc, goc (ke vuong: mod 90 deg)."""
+        sp = self.shelf_pose()
+        if sp is None:
+            return 'khong doc duoc vi tri ke'
+        sl = self.layout['slots'][self.slot]
+        x, y, yaw = self.gt
+        c, s = math.cos(sl['yaw']), math.sin(sl['yaw'])
+        along, across = (x - sp[0]) * c + (y - sp[1]) * s, -(x - sp[0]) * s + (y - sp[1]) * c
+        dyaw = wrap(4 * (yaw - sp[3])) / 4
+        return f'so voi ke: doc {100 * along:+.1f} cm, ngang {100 * across:+.1f} cm, goc {math.degrees(dyaw):+.1f} deg'
+
+    def dock_goal(self, detect):
         g = DockRobot.Goal()
-        g.use_dock_id, g.dock_id = True, f'slot_{self.slot}'
         g.navigate_to_staging_pose = False      # da tu toi staging (buoc truoc)
-        _, r = self.run_action(self.dock, g, 120.0)
+        if detect:
+            g.use_dock_id, g.dock_id = True, f'slot_{self.slot}'      # loai shelf_dock (co nhan dien)
+            self.dock_type = 'shelf_dock'
+        else:
+            sl = self.layout['slots'][self.slot]
+            g.use_dock_id, g.dock_type = False, 'slot_dock'
+            g.dock_pose = self.pose_stamped(sl['x'], sl['y'], sl['yaw'])
+            self.dock_type = 'slot_dock'
+        return g
+
+    def dock_slot(self, detect=False, vs_shelf=False):
+        _, r = self.run_action(self.dock, self.dock_goal(detect), 120.0)
         self.spin(1.0)
         sl = self.layout['slots'][self.slot]
-        info = self.error_to(sl['x'], sl['y'], sl['yaw'])
+        info = self.error_to(sl['x'], sl['y'], sl['yaw']) + (' | ' + self.error_to_shelf() if vs_shelf else '')
         if r is None:
             return False, 'het gio / bi tu choi | ' + info
         return bool(r.success), (f'error_code {r.error_code}, thu lai {r.num_retries} | ' if not r.success
                                  else f'thu lai {r.num_retries} | ') + info
 
+    def lift_and_measure(self):
+        ok, info = self.lift('up')
+        sp = self.shelf_pose()
+        if sp is not None and self.gt is not None:
+            info += f', ke lech tam xe {100 * math.hypot(sp[0] - self.gt[0], sp[1] - self.gt[1]):.1f} cm'
+        return ok, info
+
     def undock_slot(self):
         g = UndockRobot.Goal()
-        g.dock_type, g.max_undocking_time = 'shelf_dock', 30.0
+        g.dock_type, g.max_undocking_time = self.dock_type, 30.0
         ok, r = self.run_action(self.undock, g, 60.0)
         return ok and bool(r.success), ('' if r is None else f'error_code {r.error_code}')
 
@@ -207,17 +258,19 @@ class ShelfTest(Node):
         if not self.wait_nav2():
             self.get_logger().error('Nav2 / docking_server khong san sang')
             return
-        self.get_logger().info(f'Lay {self.shelf} o {self.slot} -> {self.station} -> tra ve')
+        self.place_shelf()
+        self.get_logger().info(f'Lay {self.shelf} o {self.slot} -> {self.station} -> tra ve '
+                               f'({"nhan dien chan ke" if self.detect else "theo o tren ban do"})')
         t0 = time.time()
         ok = (self.step('toi staging', self.staging)
-              and self.step('chui gam lay ke', self.dock_slot)
-              and self.step('nang ke', lambda: self.lift('up'))
+              and self.step('chui gam lay ke', lambda: self.dock_slot(self.detect, vs_shelf=True))
+              and self.step('nang ke', self.lift_and_measure)
               and self.step('lui ra (co ke)', self.undock_slot)
               and self.step(f'cho ke toi {self.station}', lambda: self.goto(self.station)))
         if ok:
             self.spin(self.wait_s)
             ok = (self.step('toi staging (co ke)', self.staging)
-                  and self.step('tra ke vao o', self.dock_slot)
+                  and self.step('tra ke vao o', lambda: self.dock_slot(False))
                   and self.step('ha ke', lambda: self.lift('down'))
                   and self.step('lui ra (khong ke)', self.undock_slot))
         sp = self.shelf_pose()

@@ -397,14 +397,32 @@ docking_server:
     dock_prestaging_tolerance: 0.5
 
     # Types of docks
-    # AGV: shelf_dock = o ke mini (chui gam, khong sac). Xe dung o staging trong loi di,
-    # truoc o 1.0 m, roi tien thang vao toi tam o.
-    dock_plugins: ['simple_charging_dock', 'shelf_dock']
+    # AGV: ke mini (chui gam, khong sac). Xe dung o staging trong loi di, truoc o 1.0 m, roi tien
+    # thang vao. 2 loai:
+    #   shelf_dock: LAY ke - chui gam theo ke THAT do shelf_detector.py tim tu 4 chan ke
+    #               (/detected_dock_pose), khong theo vi tri o (ke tra ve lech vai cm moi lan, AMCL lech ~5 cm)
+    #   slot_dock : TRA ke vao o trong (khong co chan ke nao de nhan dien) - theo vi tri o tren ban do
+    dock_plugins: ['simple_charging_dock', 'shelf_dock', 'slot_dock']
     shelf_dock:
       plugin: 'opennav_docking::SimpleNonChargingDock'
       docking_threshold: 0.03
       staging_x_offset: -1.0               # = -shelf.staging_offset (agv_mission/config/shelves.yaml)
-      use_external_detection_pose: false   # giai doan 1: tin vi tri o trong ban do (AMCL)
+      use_external_detection_pose: true
+      external_detection_timeout: 1.0      # lidar 7 Hz: 1 s = ~7 scan
+      # shelf_detector phat dung tam ke, huong ke theo huong xe -> khong can doi (mac dinh -0.2 m va
+      # roll/pitch +-1.57 la cho camera doc AprilTag)
+      external_detection_translation_x: 0.0
+      external_detection_translation_y: 0.0
+      external_detection_rotation_yaw: 0.0
+      external_detection_rotation_pitch: 0.0
+      external_detection_rotation_roll: 0.0
+      filter_coef: 0.1
+      use_stall_detection: false
+    slot_dock:
+      plugin: 'opennav_docking::SimpleNonChargingDock'
+      docking_threshold: 0.03
+      staging_x_offset: -1.0
+      use_external_detection_pose: false
       use_stall_detection: false
     simple_charging_dock:
       plugin: 'opennav_docking::SimpleChargingDock'

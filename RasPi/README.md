@@ -242,9 +242,12 @@ python3 agv_navigation/scripts/make_keepout_mask.py
 | Node | Việc | Xe thật |
 |---|---|---|
 | `lift_sim.py` (agv_gazebo) | `/lift/command` (`up`/`down`) → khớp nâng; phát `/lift/state` (`down`/`moving_up`/`up`/`moving_down`/`error`), `/lift/has_load` | cầu nối STM32 phát đúng các topic này |
+| `shelf_detector.py` (agv_navigation) | `/scan_raw` → `/detected_dock_pose`: tâm kệ gần xe nhất (frame lidar, stamp của scan) | dùng nguyên |
 | `payload_manager.py` (agv_navigation) | `/scan_raw` → `/scan`: bỏ điểm 4 trụ ốc của xe, khi chở thì bỏ cả 4 chân kệ; đổi footprint costmap (xe 0.32 × 0.38 m ↔ kệ 0.84 × 0.84 m); giới hạn 0.35 m/s khi chở; xoá costmap khi mặt nâng lên hết | dùng nguyên |
 
-**Chui gầm** dùng `docking_server` của Nav2 (`SimpleNonChargingDock`, loại `shelf_dock`, mỗi ô là một dock `slot_N1`…`slot_S5`). Xe tới **staging** cách tâm ô 1.0 m, rồi tiến thẳng vào.
+**Chui gầm** dùng `docking_server` của Nav2 (`SimpleNonChargingDock`), mỗi ô là một dock `slot_N1`…`slot_S5`. Xe tới **staging** cách tâm ô 1.0 m, rồi tiến thẳng vào. Hai loại dock:
+- `shelf_dock` (**lấy kệ**): chui theo **kệ thật**. Node `shelf_detector.py` (agv_navigation, dùng chung xe thật) tìm 4 chân kệ trong `/scan_raw` (4 cụm điểm nhỏ tạo hình vuông cạnh 0.72 m), phát tâm kệ lên `/detected_dock_pose`. Kệ trả về mỗi lần lệch vài cm, lâu dần sẽ lệch nhiều; AMCL cũng lệch ~5 cm, nên không tin vị trí ô trên bản đồ.
+- `slot_dock` (**trả kệ** vào ô trống, không có chân nào để nhận diện): theo vị trí ô trên bản đồ. Gửi `DockRobot` với `use_dock_id: false`, `dock_pose` = tâm ô, `dock_type: slot_dock`.
 - Tới staging qua một điểm cách thêm 1.2 m trên cùng trục ô (`NavigateThroughPoses`), để đoạn cuối là đường thẳng: quay tại chỗ với vùng chết thì vọt lố 30–50°.
 - Vùng cấm (ô kệ) **chỉ ở global costmap**: để ở local costmap thì bộ điều khiển docking coi mép vùng cấm là vật cản.
 - `docking_server` của Jazzy phát thẳng `cmd_vel` (không qua collision monitor), nên **giữ** kiểm tra va chạm của nó.
@@ -253,7 +256,21 @@ Thử cả chu trình (lấy kệ → trạm lấy hàng → trả về ô → t
 ```bash
 ros2 launch agv_gazebo sim.launch.py nav:=true
 ros2 run agv_gazebo shelf_transport_test.py --ros-args -p shelf:=ke_03 -p station:=tram_lay_hang
+# kệ đặt lệch khỏi tâm ô (dx m, dy m, dyaw độ); detect:=false để so với cách chui theo bản đồ
+ros2 run agv_gazebo shelf_transport_test.py --ros-args -p shelf:=ke_03 -p shelf_offset:="[0.08, -0.06, 4.0]" -p detect:=false
 ```
+
+So sánh khi kệ bị dời lệch như sau nhiều lần trả kệ: (+8, −6 cm, 4°), (−7, +5 cm, −5°), (+10, 0 cm, 0°), mỗi kiểu thử `ke_03` và `ke_06` (vùng chết 100 RPM):
+
+| | Chui theo chân kệ (`shelf_dock`) | Chui theo ô trên bản đồ (`slot_dock`) |
+|---|---|---|
+| Chui gầm lấy kệ thành công | **6/6** | 2/6 |
+| Chu trình trọn vẹn (10 bước) | **6/6** | 2/6 |
+| Lệch ngang so với kệ thật | **0.0–0.9 cm** | 1.6–10.9 cm |
+| Lệch góc so với kệ thật | 0.4–1.9° | 1.6–34.6° |
+| Lệch dọc so với tâm kệ (xe dừng quá) | 3.8–6.1 cm | 3.1–3.9 cm (2 lần chui được) |
+
+Theo bản đồ thì xe vào đúng ô nhưng lệch kệ thật, docking dự báo quẹt chân kệ và bỏ cuộc. Còn lại: xe luôn dừng quá tâm kệ ~4–6 cm (đi ≥ 0.34 m/s vì vùng chết), nên kệ nằm lệch tâm mặt nâng chừng đó.
 
 Kết quả (6 lần mỗi cấu hình, 3 kệ ở 2 dãy: `ke_01`, `ke_03`, `ke_06`, mỗi lần 10 bước):
 
