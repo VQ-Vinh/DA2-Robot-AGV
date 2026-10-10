@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "agv_modules")(type "KiCad")(uri "${KIPRJMOD}/lib/agv_modules.pretty")(options "")(descr "Footprint module cam tren board me AGV"))
+)
