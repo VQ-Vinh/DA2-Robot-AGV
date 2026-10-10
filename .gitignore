@@ -81,3 +81,11 @@ __pycache__/
 *.FCBak
 *.FCStd1
 CAD/parts/
+
+# ---------- KiCad ----------
+*.kicad_prl
+*-backups/
+~*.lck
+fp-info-cache
+# File thiet ke goc cua module tai ve de lay kich thuoc (nguon ghi trong make_footprints.py)
+PCB/lib/ref/
