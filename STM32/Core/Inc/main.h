@@ -57,6 +57,38 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define LIFT_DIR_Pin GPIO_PIN_4
+#define LIFT_DIR_GPIO_Port GPIOE
+#define LIFT_EN_Pin GPIO_PIN_6
+#define LIFT_EN_GPIO_Port GPIOE
+#define M1_IN1_Pin GPIO_PIN_7
+#define M1_IN1_GPIO_Port GPIOE
+#define M1_IN2_Pin GPIO_PIN_8
+#define M1_IN2_GPIO_Port GPIOE
+#define M2_IN1_Pin GPIO_PIN_10
+#define M2_IN1_GPIO_Port GPIOE
+#define M2_IN2_Pin GPIO_PIN_12
+#define M2_IN2_GPIO_Port GPIOE
+#define M3_IN1_Pin GPIO_PIN_15
+#define M3_IN1_GPIO_Port GPIOE
+#define M3_IN2_Pin GPIO_PIN_11
+#define M3_IN2_GPIO_Port GPIOB
+#define M4_IN1_Pin GPIO_PIN_13
+#define M4_IN1_GPIO_Port GPIOB
+#define M4_IN2_Pin GPIO_PIN_15
+#define M4_IN2_GPIO_Port GPIOB
+#define MOTOR_STBY_Pin GPIO_PIN_9
+#define MOTOR_STBY_GPIO_Port GPIOD
+#define BUZZER_Pin GPIO_PIN_11
+#define BUZZER_GPIO_Port GPIOD
+#define LIFT_SW_UP_Pin GPIO_PIN_0
+#define LIFT_SW_UP_GPIO_Port GPIOD
+#define LIFT_SW_DOWN_Pin GPIO_PIN_2
+#define LIFT_SW_DOWN_GPIO_Port GPIOD
+#define AUDIO_RST_Pin GPIO_PIN_4
+#define AUDIO_RST_GPIO_Port GPIOD
+#define ESTOP_SENSE_Pin GPIO_PIN_6
+#define ESTOP_SENSE_GPIO_Port GPIOD
 
 /* USER CODE BEGIN Private defines */
 
