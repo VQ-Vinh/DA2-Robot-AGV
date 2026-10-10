@@ -37,8 +37,8 @@ def parse_ioc(path):
 
 def family_of(periph):
     """TIM3 -> tim, USART2 -> usart, I2C1 -> i2c."""
-    base = re.match(r"^([A-Z]+)", periph)
-    return FILE_OF.get(base.group(1), None) if base else None
+    # Chi bo so thu tu o cuoi: I2C3 -> I2C (khong cat tai chu so dau tien)
+    return FILE_OF.get(re.sub(r"\d+$", "", periph), None)
 
 
 def main():

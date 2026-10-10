@@ -70,6 +70,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 09/10/2026 | Lidar lệch bản đồ (bias con quay), cửa sổ Gazebo crash (driver WSL) | #17 |
 | 09/10/2026 | Gộp #14–#17 vào `main`; README gốc thành trang giới thiệu có sơ đồ (kiến trúc, tiến độ, cấu trúc repo) | #18 |
 | 09/10/2026 | Mô hình cơ khí FreeCAD: khung, động cơ + bánh, lidar, Raspberry Pi, PCB (giữ chỗ), pin, cơ cấu nâng | #20 |
+| 09–10/10/2026 | Mạch PCB: chốt linh kiện, sơ đồ chân STM32 cho 4 bánh + nâng, sơ đồ nguyên lý KiCad theo khối, rà soát linh kiện thừa, bản xếp PCB nháp | #21 |
 
 ---
 
@@ -630,6 +631,40 @@ Các sự cố gặp phải, theo thứ tự:
 - **Giới hạn:** model GrabCAD do người dùng tự vẽ, chưa đối chiếu với linh kiện thật (trừ lỗ bắt Pi). Kích thước gá động cơ và vị trí lỗ bắt gá là ước lượng. URDF và các tham số Nav2 (track 0.34 m, `effective_track` 0.45) chưa cập nhật theo track 270 mm.
 - **Bài học:** vẽ chi tiết lắp ghép thật làm lộ những chỗ mô hình khối bỏ qua (bề dày gá, chiều cao lidar, mạch encoder); nên lấy model/số đo linh kiện trước rồi mới chốt kích thước khung.
 
+### 4.17. Mạch PCB: chốt linh kiện, sơ đồ chân và sơ đồ nguyên lý (PR #21)
+
+- **Mục tiêu:** một board mẹ cắm module (không thiết kế mạch vi điều khiển), bản demo 1 lớp tự ăn mòn, ưu tiên linh kiện xuyên lỗ, có phủ đồng mass.
+- **Linh kiện đã chốt:** STM32F4 Discovery, 2 module TB6612FNG (thay 2 L298N), A4988, BNO055, INA169 5 A (thay INA226), XL4015 5 A trên board cho 5 V logic, LD1117V33 cho 3.3 V, IRF4905 chống ngược cực, cầu chì 5 A, đầu PH2.0-6P cho 4 động cơ. Raspberry Pi 5 (thay Pi 4) dùng buck riêng ngoài board; board chỉ có domino xuất điện áp pin.
+- **Cách làm:**
+  - Sơ đồ chân chọn theo vị trí vật lý trên hai hàng chân P1/P2 của Discovery, dò theo bảng 5 và hình 10 của UM1472: P1 lo động cơ + ADC + UART, P2 lo encoder + nâng + I2C. Người làm đồ án cấu hình trong CubeMX, sau đó kiểm tra lại `.ioc` và code đã sinh bằng `check_ioc.py` rồi build.
+  - Sơ đồ nguyên lý vẽ bằng KiCad 10.0.6 qua MCP `kicad-full`, file `PCB/agv_mainboard.kicad_sch`, thư viện ký hiệu module riêng `PCB/lib/agv_modules.kicad_sym`. Nối dây bằng nhãn net trên từng chân.
+- **Kết quả:** 61 linh kiện, 66 net; ERC 0 lỗi, 5 cảnh báo (ký hiệu trong sơ đồ khác bản trong thư viện, chưa xử lý). Danh sách net đã đối chiếu từng chân với bảng chân trong `.ioc`. Firmware build được sau khi sinh lại code: FLASH 62 736 B (5.98 %), RAM 22 320 B (17.03 %). Chưa gán footprint, chưa vẽ PCB.
+- **Sai lầm và sự cố:**
+
+| # | Vấn đề | Nguyên nhân (tìm bằng cách nào) | Xử lý |
+|---|---|---|---|
+| 1 | Bảng chân đề xuất lần đầu dựa trên trí nhớ về Discovery, chưa biết chân nào nằm cột nào của hàng chân | Tải UM1472 và đọc bảng 5 + bản vẽ cơ khí | Đề xuất lại: driver 2 dùng 7 chân liền nhau ở cột ngoài P1; đổi chân ADC, còi, công tắc hành trình, STBY so với lần đầu |
+| 2 | Tư vấn cấp logic A4988 bằng 5 V | Discovery chạy VDD 3.0 V; A4988 cần mức cao ≥ 0.7 × VDD = 3.5 V khi cấp 5 V. Phát hiện khi vẽ sơ đồ | Cấp logic A4988 và TB6612 bằng 3.3 V |
+| 3 | Đề xuất shunt 10 mΩ + INA226 và đầu XH 2 chân cho nút dừng khẩn | INA169 5 A được chọn thay INA226; nút dừng khẩn mang dòng động cơ nên không dùng đầu XH được | Bỏ shunt rời; nút dừng khẩn và công tắc nguồn dùng domino KF301 |
+| 4 | Sau lần sinh code đầu: PD0, PD2, PD6 là ngõ ra thay vì ngõ vào; nhãn PD0 thừa dấu phẩy (`LIFT_SW_UP__Pin`); bộ lọc kênh 2 của TIM2/4/8 bằng 0 | Đọc `.ioc`, `main.h`, `gpio.c`, `tim.c` sau khi người làm đồ án báo đã xong | Sửa trong CubeMX qua 2 lần sinh lại code (PD6 còn sót ở lần đầu) |
+| 5 | PD13 (LED nhịp tim) biến mất khỏi `.ioc` sau khi cấu hình lại, trong khi `app.c` vẫn nháy chân này; code vẫn build được | So `git diff` của `.ioc` với chỗ dùng chân trong `App/` | Chưa sửa, cần bật lại PD13 trong CubeMX |
+| 6 | `check_ioc.py` báo "I2C3: chưa sinh None.c" dù `i2c.c` đã có | Hàm tách tên ngoại vi cắt tại chữ số đầu tiên (`I2C3` → `I`) | Chỉ bỏ số thứ tự ở cuối tên |
+| 7 | Lệnh đặt linh kiện của MCP báo "Command timeout after 30s" và để lại file `.kicad_sch` 0 byte, 2 lần (lần đặt 34 linh kiện và lần đặt 6 linh kiện với 62 chân) | Xem kích thước file sau mỗi lần; các lệnh gắn dưới khoảng 25 chân đều chạy được | Chia lô nhỏ, sao lưu file sau mỗi lệnh thành công; mất và làm lại phần hai hàng chân Discovery |
+| 8 | Cụm công tắc hành trình đặt đè lên khung tên bản vẽ | Xuất ảnh sơ đồ ra xem | Xoá và đặt lại ở chỗ trống |
+
+- **Footprint module – đổi cách làm:** ban đầu định tự vẽ footprint module theo số đo và theo "loại phổ biến". Người làm đồ án yêu cầu tìm thư viện có sẵn trước. Kết quả tìm: thư viện KiCad chỉ có A4988 (`Module:Pololu_Breakout-16_15.2x20.3mm`); kho PartReel (21 668 linh kiện) và SnapEDA không có footprint cho board module; link XL4015 đầu tiên đưa ra (Flux) là footprint của con chip chứ không phải module, người làm đồ án phát hiện. Nguồn dùng được: file Eagle gốc của SparkFun (TB6612FNG) và Adafruit (INA169), footprint module XL4015 của rayvburn trên GitHub. Toạ độ chân được trích bằng script từ file `.brd`, rồi sinh footprint bằng `PCB/lib/make_footprints.py`.
+  - TB6612FNG: board 20.32 × 20.32 mm, hai hàng 1×8 cách 15.24 mm; thứ tự chân trùng với ký hiệu đã vẽ.
+  - INA169: board 22.86 × 20.97 mm, hàng rào 5 chân (VCC, GND, VIN−, VIN+, OUT) + 2 lỗ domino 3.5 mm; shunt 0.1 Ω và tải 10 kΩ, tức 1 V/A, đúng giả định của sơ đồ.
+  - XL4015: 4 pad cách 50 × 20 mm, khớp số đo module thật (53.5 × 24 mm, lỗ cách 20 mm và khoảng 50 mm); nới lỗ khoan 0.76 → 1.3 mm.
+  - GY-BNO055: hàng rào 1×8 (VIN, GND, SCL, SDA, ADD, INT, BOOT, RST), dùng footprint chuẩn.
+  - Hai hàng chân Discovery dùng footprint PinHeader 2×25 thay vì PinSocket 2×25, vì PinSocket của KiCad đánh số ngược gương (cột lẻ/chẵn đổi chỗ).
+  - Sau khi gán: 61/61 linh kiện có footprint, ERC 0 lỗi, 5 cảnh báo như cũ. Footprint module mới được KiCad nạp thử, chưa in 1:1 để ướm module thật; module đang có là hàng sao chép nên chưa chắc trùng board gốc.
+- **Vẽ lại sơ đồ nguyên lý theo khối (theo yêu cầu):** bản đầu gắn nhãn net lên từng chân, đúng điện nhưng khó đọc. Người làm đồ án yêu cầu hai việc: chia thành ô chức năng có khung, và trong cùng một ô thì nối bằng dây, chỉ dùng nhãn khi tín hiệu đi xa. Đã vẽ lại thành 10 ô (nguồn vào, đo pin, nguồn 5 V/3.3 V, dừng khẩn, LED, MCU, driver động cơ, cơ cấu nâng, IMU/I2C/UART, còi): 168 đoạn dây, 69 ký hiệu nguồn (GND, +5V, +3V3), số nhãn giảm từ 239 xuống 118 (phần còn lại là tín hiệu về hai hàng chân MCU và tên của các net cục bộ). Cách kiểm tra: xuất netlist bằng `kicad-cli` trước và sau, so tập (net, linh kiện, chân): 299 điểm nối, 124 net, không lệch điểm nào; ERC 0 lỗi. Việc vẽ lại làm bằng script sửa thẳng file `.kicad_sch` vì lệnh đặt linh kiện của MCP hay quá thời gian chờ (sự cố 7).
+- **Chuyển sang PCB (bản nháp):** 61 footprint, 66 net vào `agv_mainboard.kicad_pcb`; xếp thử trong vùng 150 × 120 mm (Discovery chiếm 66 × 97 mm nên 120 × 120 mm không đủ). Chưa đi dây, chưa chạy DRC. Ba lệnh của MCP báo thành công nhưng không có tác dụng khi KiCad đang mở qua IPC: đặt luật thiết kế, vẽ viền board, đọc vị trí pad (trả về số liệu cũ trên đĩa). Viền board phải ghi thẳng vào file; luật thiết kế 1 lớp chưa đặt được.
+- **Rà soát linh kiện thừa (theo yêu cầu):** người làm đồ án hỏi vì sao ghép module mà vẫn nhiều linh kiện ngoài, ví dụ tụ ở hai đầu XL4015. Câu hỏi đúng: bản đầu đặt thêm tụ và điện trở "cho chắc" mà không đối chiếu với thứ module và chip đã có. Đối chiếu lại: module XL4015 có tụ 220 µF ở cả hai đầu (ảnh module); file board gốc của SparkFun cho thấy TB6612FNG có 10 µF + 0.1 µF trên VM và 0.1 µF trên VCC; datasheet Toshiba ghi các chân vào kể cả STBY có điện trở kéo xuống 200 kΩ bên trong; UM1472 mục 4.3 và 4.4 cho biết Discovery có LED báo nguồn LD2 và chân 5 V xuất điện khi cắm USB; trang Pololu yêu cầu tụ hoá ít nhất 47 µF trên VMOT của A4988; LD1117 cần tối thiểu 10 µF ở đầu ra. Bỏ 13 linh kiện: C2, C3, C4 (trùng tụ của XL4015), C8, C9, C10, C11 (trùng tụ của TB6612FNG; còn C6 1000 µF chung cho VMOT), R10 (trùng điện trở kéo xuống trong chip), R1 (cực G của IRF4905 nối thẳng mass, pin 12.6 V nằm trong giới hạn ±20 V), LED báo pin và LED báo 5 V cùng điện trở (trùng LED của Discovery). Giữ: C5, C12 (bắt buộc), C6, D2 (chặn USB cấp ngược vào đầu ra XL4015), LED báo VMOT (chuyển vào khối dừng khẩn), các mạch ghép mức và trạng thái lúc reset. Còn 48 linh kiện, 9 khối; ERC 0 lỗi; so netlist chỉ khác đúng 26 điểm nối của 13 linh kiện đã bỏ và cực G của Q1 chuyển sang GND. Chưa kiểm chứng trên module thật: module mua là hàng sao chép, số tụ có thể khác board gốc. File PCB nháp chưa cập nhật theo.
+- **Còn mở:** dòng kẹt trục GA25 chưa đo (quyết định TB6612FNG có đủ tải); footprint module chưa ướm với module thật; loại đế cầu chì và domino đang chọn theo loại phổ biến (Schurter 0031.8201, bước 22.6 mm; domino bước 5.0 mm), chưa đối chiếu hàng mua; board 120 × 120 mm nhiều khả năng không đủ vì Discovery đã chiếm 66 × 97 mm.
+- **Bài học:** tra tài liệu của board trước khi đề xuất sơ đồ chân; tìm file thiết kế gốc hoặc thư viện có sẵn trước khi tự vẽ footprint, và mở file ra kiểm tra trước khi đưa link; sau mỗi lệnh ghi file của công cụ tự động phải kiểm tra file còn nguyên và có bản sao lưu.
+
 ---
 
 ## 5. Tổng hợp sai lầm và bài học
@@ -662,6 +697,7 @@ Các sự cố gặp phải, theo thứ tự:
 | Kiva | Trả đơn về hàng đợi khi xe đang đội kệ | Quyết định theo trạng thái vật lý của xe |
 | Kiva | Tin "Docking was successful" là xe đã vào đúng ô | Tự kiểm tra tư thế trước khi nâng / hạ |
 | Kiva | Chỉ nhìn số đơn xong, không đo quỹ đạo | Đo góc quay thừa từng bước (8/8 đơn xong vẫn có bước quay 4000°) |
+| PCB | Thêm tụ, điện trở ngoài "cho chắc" mà không xem module và chip đã có gì | Mở file thiết kế / datasheet của từng module trước khi thêm linh kiện ngoài |
 | Kiva | Giải quyết vùng chết bằng quay tại chỗ chính xác | Đo trước: một lần Spin quay thừa ~30 deg, chỉ chỉnh được khi đang đi |
 | Định vị | Chỉnh covariance / ngưỡng AMCL để chữa trôi do bias con quay | Đo vận tốc quay của EKF trước; sửa tận gốc: ước lượng bias khi bánh đứng yên |
 | Mô phỏng | Gửi lệnh gz một lần rồi coi như xong | Đọc trạng thái thật và gửi lại tới khi khớp |

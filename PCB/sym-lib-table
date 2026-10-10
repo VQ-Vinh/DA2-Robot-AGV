@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "agv_modules")(type "KiCad")(uri "${KIPRJMOD}/lib/agv_modules.kicad_sym")(options "")(descr ""))
+)
