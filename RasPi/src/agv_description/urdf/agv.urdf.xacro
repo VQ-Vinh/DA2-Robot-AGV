@@ -1,71 +1,69 @@
 <?xml version="1.0"?>
 <!--
-  AGV kho hang: xe skid-steer 4 banh (GA25-370 x4), lidar YDLidar, IMU BNO055.
-  Than xe 2 tang: 2 tam mica 30 x 30 cm cach nhau 10 cm, 4 tru oc o 4 goc.
-    - Tang 1: pin, mach, Pi, STM32 (khoi "linh kien"); lidar o phia truoc tang 1 (theo CAD), GIUA 2 tang
-    - Tang 2: co cau nang (vit me) + mat nang de chui gam va nang ke mini (kieu Amazon Kiva)
-  Lidar o giua 2 tang (mat quet ~0.12 m) vi: tren noc thi bi day ke che khi chui gam; o day
-  thi thay ca pallet thap 0.15 m. 4 tru oc che vai do -> payload_manager loc bo.
+  AGV kho hang: xe skid-steer 4 banh (GA25-370 x4), lidar YDLidar X4, IMU BNO055.
+  KICH THUOC VA HINH DANG LAY TU MO HINH CO KHI CAD/agv.FCStd (REPORT.md 4.16, 4.20):
+    - so do: bang Params cua file CAD (CAD/export_meshes.py in ra khi chay)
+    - hinh hien thi: luoi STL trong meshes/, sinh boi CAD/export_meshes.py. Sua CAD thi chay lai script
+      roi sua cac so o day cho khop.
+  Than xe 2 tang: 2 tam mica 30 x 30 cm cach nhau 10 cm, 4 tru oc. Banh nam TRONG khung (tang 1 khoet 4 cho).
+    - Tang 1: DAU XE la phia PCB + Pi + camera, lidar o phia SAU (= -X cua file CAD, luoi da quay 180 deg), pin treo duoi tang 1, dong co nang NEMA17; 4 vit me T8 noi 2 tang
+    - Tang 2: mat nang de chui gam va nang ke mini (kieu Amazon Kiva)
+  Lidar nam giua 2 tang, lech ve SAU 0.095 m. 4 tru oc va 4 vit me che vai do -> payload_manager loc bo.
+  Va cham (collision) van la hinh hop / tru don gian.
   Frame: base_footprint (mat dat) -> base_link (tam truc banh) -> banh, laser_frame, imu_link,
          lift_plate (khop truot lift_joint, 0 = ha, lift_stroke = nang).
   Gia tri co danh dau (*) la uoc luong - do xe that roi sua.
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="agv">
 
-  <!-- ===================== Kich thuoc (m, kg) ===================== -->
+  <!-- ===================== Kich thuoc (m, kg) - theo CAD ===================== -->
   <!-- Mica -->
   <xacro:property name="plate_size"       value="0.30"/>   <!-- 30 x 30 cm -->
   <xacro:property name="plate_thickness"  value="0.005"/>  <!-- (*) -->
   <xacro:property name="plate_gap"        value="0.10"/>   <!-- mat tren tang 1 -> mat duoi tang 2 -->
-  <xacro:property name="plate1_below_axle" value="0.0125"/> <!-- (*) mat duoi tang 1 cao hon truc banh (GA25 treo duoi mica) -->
-  <xacro:property name="standoff_radius"  value="0.003"/>  <!-- tru oc M5 -->
-  <xacro:property name="standoff_inset"   value="0.015"/>  <!-- (*) tam tru cach mep mica -->
+  <xacro:property name="plate1_below_axle" value="0.0175"/> <!-- (*) theo ga chu L cua GA25: mat duoi tang 1 cao hon truc banh -->
+  <xacro:property name="body_mass"        value="2.6"/>    <!-- (*) ca xe tru banh va mat nang: 2 mica ~1.0, 5 dong co ~0.7, pin, mach, lidar -->
 
-  <!-- Khoi linh kien tren tang 1 (pin 3S, mach, Pi) - chi de hien thi va dat khoi luong -->
-  <xacro:property name="payload_size_x"   value="0.20"/>   <!-- (*) -->
-  <xacro:property name="payload_size_y"   value="0.16"/>   <!-- (*) -->
-  <xacro:property name="payload_size_z"   value="0.05"/>   <!-- (*) -->
-  <xacro:property name="body_mass"        value="2.2"/>    <!-- (*) ca xe tru banh -->
-
-  <!-- Banh -->
-  <xacro:property name="wheel_radius"     value="0.0325"/> <!-- banh 65 mm -->
-  <xacro:property name="wheel_width"      value="0.027"/>  <!-- (*) -->
+  <!-- Banh "65 mm": duong kinh ngoai thuc 68 mm (model banh) -->
+  <xacro:property name="wheel_radius"     value="0.034"/>
+  <xacro:property name="wheel_width"      value="0.027"/>
   <xacro:property name="wheel_mass"       value="0.08"/>   <!-- (*) -->
   <xacro:property name="wheelbase"        value="0.20"/>   <!-- (*) truc truoc -> truc sau -->
-  <xacro:property name="track_width"      value="0.34"/>   <!-- (*) tam banh trai -> tam banh phai, banh nam ngoai mica -->
+  <xacro:property name="track_width"      value="0.27"/>   <!-- tam banh trai -> tam banh phai, banh nam trong khung 0.30 m -->
   <!-- Skid-steer truot ngang khi quay nen xe quay it hon tinh toan theo track_width.
        Track hieu dung dung cho DiffDrive: cho xe quay tai cho, lay
        effective_track moi = effective_track cu * goc_odom / goc_that. -->
-  <xacro:property name="effective_track"  value="0.45"/>   <!-- hieu chinh trong sim: quay that 124 deg / odom 163 deg -->
+  <xacro:property name="effective_track"  value="0.383"/>  <!-- hieu chinh trong sim: quay tai cho 2.5 rad/s, odom 2.49 / that 2.32 rad/s voi track 0.357 -->
 
-  <!-- Lidar giua 2 tang, phia truoc xe tren 4 tru M3 x 25 (CAD/agv.FCStd, CAD/README.md).
-       laser_frame dat o mat quet; than lidar tu mat quet - lidar_below_scan toi mat quet + lidar_above_scan. -->
-  <xacro:property name="lidar_x"          value="0.108"/>  <!-- CAD: tam dau quay cach tam xe 108 mm -->
-  <xacro:property name="lidar_scan_height" value="0.1199"/> <!-- (*) CAD: mat quet cach dat 119.9 mm -->
-  <xacro:property name="lidar_radius"     value="0.035"/>  <!-- YDLidar X4 ~ 70 mm -->
-  <xacro:property name="lidar_below_scan" value="0.0384"/> <!-- (*) CAD: than cao 58.4 mm, mat quet thap hon dinh 20 mm -->
-  <xacro:property name="lidar_above_scan" value="0.020"/>  <!-- (*) -->
+  <!-- Lidar YDLidar X4 (model 101.4 x 71 x 59 mm), tai bat cach mat tang 1 35 mm (tru M3 x 35),
+       tam dau quay cach tam xe 0.095 m ve phia SAU (dau xe la phia camera) -->
+  <xacro:property name="lidar_x"          value="-0.095"/>
+  <xacro:property name="lidar_scan_z"     value="0.123"/>  <!-- (*) so voi mat dat: giua dau quay (de lidar cao toi 0.113, dinh 0.133) -->
+  <xacro:property name="lidar_radius"     value="0.033"/>
+  <xacro:property name="lidar_body_z0"    value="0.074"/>  <!-- day chan lidar so voi mat dat -->
+  <xacro:property name="lidar_body_z1"    value="0.133"/>
 
-  <!-- Mat nang tren tang 2 (vit me + dong co nho, tu giu tai khi mat dien) -->
+  <!-- Mat nang tren tang 2 (4 vit me T8 + dai GT2 + NEMA17, tu giu tai khi mat dien) -->
   <xacro:property name="lift_plate_size"  value="0.26"/>
   <xacro:property name="lift_plate_thickness" value="0.01"/>
+  <xacro:property name="lift_plate_mass"  value="0.8"/>    <!-- (*) mica 10 mm + 4 dai oc dong -->
   <xacro:property name="lift_gap"         value="0.002"/>  <!-- mat nang ha het cach tang 2 -->
-  <xacro:property name="lift_stroke"      value="0.03"/>   <!-- ke mini cao gam 0.18 m: nang len ~1.7 cm khoi san -->
-  <xacro:property name="lift_speed"       value="0.02"/>   <!-- m/s, ~1.5 s cho het hanh trinh -->
+  <xacro:property name="lift_stroke"      value="0.03"/>   <!-- mat nang ha het cao 0.1735 m, ke cao gam 0.18 m: nang ke len ~2.3 cm khoi san -->
+  <xacro:property name="lift_speed"       value="0.0067"/> <!-- m/s: vit me T8 buoc 2 mm o 200 vong/phut, ~4.5 s cho het hanh trinh -->
 
   <!-- Toa do z theo base_link (truc banh) -->
   <xacro:property name="plate1_z"   value="${plate1_below_axle + plate_thickness / 2}"/>
   <xacro:property name="plate1_top" value="${plate1_below_axle + plate_thickness}"/>
   <xacro:property name="plate2_z"   value="${plate1_top + plate_gap + plate_thickness / 2}"/>
   <xacro:property name="plate2_top" value="${plate1_top + plate_gap + plate_thickness}"/>
-  <xacro:property name="standoff_xy" value="${plate_size / 2 - standoff_inset}"/>
+  <xacro:property name="mesh_dir"   value="file://$(find agv_description)/meshes"/>
 
   <!-- ===================== Mau ===================== -->
-  <material name="mica"><color rgba="0.85 0.9 1.0 0.6"/></material>
-  <material name="orange"><color rgba="1.0 0.5 0.1 1.0"/></material>
-  <material name="black"><color rgba="0.1 0.1 0.1 1.0"/></material>
-  <material name="grey"><color rgba="0.5 0.5 0.5 1.0"/></material>
-  <material name="brass"><color rgba="0.8 0.7 0.3 1.0"/></material>
+  <material name="mica"><color rgba="0.75 0.88 1.0 0.5"/></material>
+  <material name="black"><color rgba="0.08 0.08 0.08 1.0"/></material>
+  <material name="grey"><color rgba="0.45 0.47 0.5 1.0"/></material>
+  <material name="dark"><color rgba="0.22 0.22 0.25 1.0"/></material>
+  <material name="lidar_blue"><color rgba="0.05 0.10 0.75 1.0"/></material>
 
   <!-- ===================== Macro quan tinh ===================== -->
   <xacro:macro name="box_inertia" params="m x y z *origin">
@@ -89,14 +87,6 @@
     </inertial>
   </xacro:macro>
 
-  <xacro:macro name="standoff" params="x y">
-    <visual>
-      <origin xyz="${x} ${y} ${plate1_top + plate_gap / 2}"/>
-      <geometry><cylinder radius="${standoff_radius}" length="${plate_gap}"/></geometry>
-      <material name="brass"/>
-    </visual>
-  </xacro:macro>
-
   <!-- ===================== Than xe ===================== -->
   <link name="base_footprint"/>
 
@@ -107,48 +97,41 @@
   </joint>
 
   <link name="base_link">
-    <!-- Tang 1 -->
+    <!-- Hinh hien thi tu CAD. Lidar (gpu_lidar) nhin thay cac luoi nay: 4 tru oc, 4 vit me nang -->
     <visual>
-      <origin xyz="0 0 ${plate1_z}"/>
-      <geometry><box size="${plate_size} ${plate_size} ${plate_thickness}"/></geometry>
+      <geometry><mesh filename="${mesh_dir}/base_plates.stl"/></geometry>
       <material name="mica"/>
     </visual>
+    <visual>
+      <geometry><mesh filename="${mesh_dir}/base_parts.stl"/></geometry>
+      <material name="dark"/>
+    </visual>
+    <visual>
+      <geometry><mesh filename="${mesh_dir}/lidar.stl"/></geometry>
+      <material name="dark"/>
+    </visual>
+    <visual>
+      <geometry><mesh filename="${mesh_dir}/lidar_head.stl"/></geometry>
+      <material name="lidar_blue"/>
+    </visual>
+
+    <!-- Va cham: 2 tam mica + than lidar (banh nam trong cho khoet cua tang 1; cung model nen khong tu va cham) -->
     <collision>
       <origin xyz="0 0 ${plate1_z}"/>
       <geometry><box size="${plate_size} ${plate_size} ${plate_thickness}"/></geometry>
     </collision>
-
-    <!-- Linh kien tren tang 1 -->
-    <visual>
-      <origin xyz="0 0 ${plate1_top + payload_size_z / 2}"/>
-      <geometry><box size="${payload_size_x} ${payload_size_y} ${payload_size_z}"/></geometry>
-      <material name="orange"/>
-    </visual>
-    <collision>
-      <origin xyz="0 0 ${plate1_top + payload_size_z / 2}"/>
-      <geometry><box size="${payload_size_x} ${payload_size_y} ${payload_size_z}"/></geometry>
-    </collision>
-
-    <!-- 4 tru oc -->
-    <xacro:standoff x="${ standoff_xy}" y="${ standoff_xy}"/>
-    <xacro:standoff x="${ standoff_xy}" y="${-standoff_xy}"/>
-    <xacro:standoff x="${-standoff_xy}" y="${ standoff_xy}"/>
-    <xacro:standoff x="${-standoff_xy}" y="${-standoff_xy}"/>
-
-    <!-- Tang 2 -->
-    <visual>
-      <origin xyz="0 0 ${plate2_z}"/>
-      <geometry><box size="${plate_size} ${plate_size} ${plate_thickness}"/></geometry>
-      <material name="mica"/>
-    </visual>
     <collision>
       <origin xyz="0 0 ${plate2_z}"/>
       <geometry><box size="${plate_size} ${plate_size} ${plate_thickness}"/></geometry>
     </collision>
+    <collision>
+      <origin xyz="${lidar_x} 0 ${(lidar_body_z0 + lidar_body_z1) / 2 - wheel_radius}"/>
+      <geometry><cylinder radius="${lidar_radius}" length="${lidar_body_z1 - lidar_body_z0}"/></geometry>
+    </collision>
 
-    <!-- Khoi luong don o tang 1 (pin nang nhat) -> trong tam thap -->
-    <xacro:box_inertia m="${body_mass}" x="${plate_size}" y="${plate_size}" z="${payload_size_z}">
-      <origin xyz="0 0 ${plate1_top + payload_size_z / 2}"/>
+    <!-- Khoi luong don o tang 1 (pin, dong co, mach) -> trong tam thap -->
+    <xacro:box_inertia m="${body_mass}" x="${plate_size}" y="${plate_size}" z="0.06">
+      <origin xyz="0 0 ${plate1_top + 0.02}"/>
     </xacro:box_inertia>
   </link>
 
@@ -156,9 +139,10 @@
   <!-- prefix: fl/fr/rl/rr, x: +truoc/-sau, y: +trai/-phai -->
   <xacro:macro name="wheel" params="prefix x y">
     <link name="wheel_${prefix}_link">
+      <!-- luoi banh trai (khop noi quay vao trong); banh phai quay 180 deg -->
       <visual>
-        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
-        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+        <origin xyz="0 0 0" rpy="0 0 ${0 if y > 0 else pi}"/>
+        <geometry><mesh filename="${mesh_dir}/wheel.stl"/></geometry>
         <material name="black"/>
       </visual>
       <collision>
@@ -184,33 +168,23 @@
   <xacro:wheel prefix="rr" x="${-wheelbase/2}" y="${-track_width/2}"/>
 
   <!-- ===================== Lidar (giua 2 tang, phia truoc) ===================== -->
-  <xacro:property name="lidar_len" value="${lidar_below_scan + lidar_above_scan}"/>
-  <xacro:property name="lidar_mid" value="${(lidar_above_scan - lidar_below_scan) / 2}"/>
+  <!-- Hinh va va cham cua than lidar nam trong base_link; laser_frame chi la goc tia quet -->
   <link name="laser_frame">
-    <visual>
-      <origin xyz="0 0 ${lidar_mid}"/>
-      <geometry><cylinder radius="${lidar_radius}" length="${lidar_len}"/></geometry>
-      <material name="grey"/>
-    </visual>
-    <collision>
-      <origin xyz="0 0 ${lidar_mid}"/>
-      <geometry><cylinder radius="${lidar_radius}" length="${lidar_len}"/></geometry>
-    </collision>
-    <xacro:cylinder_inertia m="0.1" r="${lidar_radius}" h="${lidar_len}">
-      <origin xyz="0 0 ${lidar_mid}" rpy="0 0 0"/>
+    <xacro:cylinder_inertia m="0.01" r="0.01" h="0.01">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
     </xacro:cylinder_inertia>
   </link>
 
   <joint name="laser_joint" type="fixed">
     <parent link="base_link"/>
     <child link="laser_frame"/>
-    <origin xyz="${lidar_x} 0 ${lidar_scan_height - wheel_radius}" rpy="0 0 0"/>
+    <origin xyz="${lidar_x} 0 ${lidar_scan_z - wheel_radius}" rpy="0 0 0"/>
   </joint>
 
   <!-- ===================== Mat nang (tang 2) ===================== -->
   <link name="lift_plate">
     <visual>
-      <geometry><box size="${lift_plate_size} ${lift_plate_size} ${lift_plate_thickness}"/></geometry>
+      <geometry><mesh filename="${mesh_dir}/lift_plate.stl"/></geometry>
       <material name="grey"/>
     </visual>
     <!-- Ten cho cam bien tiep xuc "co ke": URDF -> SDF them duoi "_collision" thanh
@@ -218,7 +192,7 @@
     <collision name="lift_plate">
       <geometry><box size="${lift_plate_size} ${lift_plate_size} ${lift_plate_thickness}"/></geometry>
     </collision>
-    <xacro:box_inertia m="0.15" x="${lift_plate_size}" y="${lift_plate_size}" z="${lift_plate_thickness}">
+    <xacro:box_inertia m="${lift_plate_mass}" x="${lift_plate_size}" y="${lift_plate_size}" z="${lift_plate_thickness}">
       <origin xyz="0 0 0"/>
     </xacro:box_inertia>
   </link>

@@ -57,8 +57,10 @@
            Lay 1.0 m/s^2 vi xe co tai se cham hon. -->
       <max_linear_acceleration>1.0</max_linear_acceleration>
       <min_linear_acceleration>-1.0</min_linear_acceleration>
-      <max_angular_acceleration>3.0</max_angular_acceleration>
-      <min_angular_acceleration>-3.0</min_angular_acceleration>
+      <!-- Gia toc goc: giu nguyen gia toc BANH khi quay tai cho nhu truoc (3.0 rad/s^2 voi track hieu dung
+           0.45 m = 0.675 m/s^2 moi banh) -> voi track moi la 2 * 0.675 / effective_track (~3.5 rad/s^2) -->
+      <max_angular_acceleration>${2 * 0.675 / effective_track}</max_angular_acceleration>
+      <min_angular_acceleration>${-2 * 0.675 / effective_track}</min_angular_acceleration>
       <topic>/model/agv/cmd_vel</topic>
       <!-- Odom banh xe tho (khong covariance). Node wheel_odom them covariance roi gui
            /wheel/odom cho EKF; EKF moi phat /odom va TF odom -> base_footprint.
@@ -127,8 +129,12 @@
             <max_angle>0.0</max_angle>
           </vertical>
         </scan>
+        <!-- min 0.05 (X4 that: 0.12). Gazebo KHONG ve vat gan hon min: voi 0.12 thi tia di xuyen qua 2 tru oc
+             va 2 vit me gan lidar (cach 0.075-0.112 m) nhu the chung khong ton tai. Xe that thi cac
+             tru nay chan tia (lidar tra ve 0 = khong hop le). De 0.05 cho lidar mo phong thay chung,
+             payload_manager loc bo (NaN) -> cung mat cac goc do nhu xe that (REPORT.md 4.20). -->
         <range>
-          <min>0.12</min>
+          <min>0.05</min>
           <max>10.0</max>
           <resolution>0.01</resolution>
         </range>

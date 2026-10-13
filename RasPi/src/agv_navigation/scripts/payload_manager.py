@@ -2,13 +2,13 @@
 """Thay doi theo tai cua xe kieu Kiva (dung chung mo phong va xe that).
 
 Doc trang thai co cau nang (/lift/state, /lift/has_load) va:
-  1. Loc scan /scan_raw -> /scan: bo diem roi vao than xe (4 tru oc giua 2 tang che lidar), va
+  1. Loc scan /scan_raw -> /scan: bo diem roi vao than xe (4 tru oc va 4 vit me nang giua 2 tang che lidar), va
      khi dang cho thi bo diem trong khung shelf_half (vat di theo xe duoi mat quet lidar). Pallet nam tren
      chan do co dinh, khong co chan rieng -> shelf_half mac dinh = body_half (khong loc them).
      Giong LaserScanBoxFilter cua laser_filters (diem bi loc = NaN, AMCL / SLAM / costmap bo qua),
      nhung doi khung loc theo tai nen tu viet. Khung loc tinh theo base_link (tam xe); lidar dat lech
      tam (CAD: phia truoc 108 mm) nen lay vi tri lidar tu TF base_link -> frame cua scan.
-  2. Doi footprint cua 2 costmap: xe 0.32 x 0.38 m <-> pallet 0.88 (doc) x 0.78 (ngang) m.
+  2. Doi footprint cua 2 costmap: xe 0.32 x 0.32 m (khung 0.30 m theo CAD + 1 cm moi ben) <-> pallet 0.88 (doc) x 0.78 (ngang) m.
      Ngoai le: khi xe dang o trong chan do (payload/in_slot = true, do order_manager bao luc lui ra sau
      khi nang va luc chui vao tra pallet) thi van dung footprint xe: pallet bay qua tren 4 tru (day pallet
      cao hon dinh tru 1.7 cm khi nang), chi than xe moi dung tru. Footprint pallet o day se trum 4 tru
@@ -45,13 +45,13 @@ def rect(hx, hy):
 class PayloadManager(Node):
     def __init__(self):
         super().__init__('payload_manager')
-        # Khung tinh trong base_link: than xe gom 4 tru oc o +-0.135 m
+        # Khung tinh trong base_link: than xe gom 4 tru oc o (+-0.135, +-0.105) m va 4 vit me o (+-0.103, +-0.086) m
         self.base_frame = self.declare_parameter('base_frame', 'base_link').value
         self.body = self.declare_parameter('body_half', [0.17, 0.17]).value
         # Khung loc khi dang cho. Ke cu co 4 chan di theo xe -> [0.48, 0.48] (REPORT.md 4.10). Pallet tren
         # chan do co dinh khong co gi di theo xe duoi mat quet -> chi loc than xe.
         self.shelf = self.declare_parameter('shelf_half', list(self.body)).value
-        self.robot_fp = self.declare_parameter('robot_footprint_half', [0.16, 0.19]).value
+        self.robot_fp = self.declare_parameter('robot_footprint_half', [0.16, 0.16]).value
         # Footprint khi cho (nua doc, nua ngang): ke 0.75 m; nhan dien chan ke cho lech ngang <= 1 cm nhung
         # xe dung qua tam ke 4-6 cm theo chieu doc (REPORT.md 4.10) -> doc 0.375 + 0.065, ngang 0.375 + 0.015.
         # Vuong 0.42 x 0.42 truoc day lam khe toi ke ben canh khi tra ke chi con ~17 cm (REPORT.md 4.13).
