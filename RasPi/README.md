@@ -59,7 +59,7 @@ Build lại chỉ khi thêm file mới. Sửa file có sẵn (`.xacro`, `.sdf`, 
 ```bash
 ros2 launch agv_gazebo sim.launch.py nav:=true
 ```
-- RViz mở `agv_navigation/rviz/nav.rviz` (từ cấu hình mặc định của Nav2, gọn hơn): bản đồ trắng/đen, các ô kệ mini là vùng cấm, chấm đỏ = lidar, đường xanh = đường Nav2 lập, ô mờ quanh xe = local costmap. Global costmap (lớp tím/xanh phủ cả kho) tắt sẵn, muốn xem thì tick lại trong *Displays → Global Planner*.
+- RViz mở `agv_navigation/rviz/nav.rviz` (từ cấu hình mặc định của Nav2, gọn hơn): bản đồ trắng/đen, các ô kệ mini và dải phía sau mỗi dãy kệ là vùng cấm (lối sau dãy kệ chỉ rộng ~1.17 m, xe đang chở kệ không quay đầu được), chấm đỏ = lidar, đường xanh = đường Nav2 lập, ô mờ quanh xe = local costmap. Global costmap (lớp tím/xanh phủ cả kho) tắt sẵn, muốn xem thì tick lại trong *Displays → Global Planner*.
 - Xe xuất phát **ngay ở trạm sạc** (đang sạc, mũi quay vào khối tiếp điểm, map (−0.45, 0), hướng π); AMCL đã đặt sẵn vị trí này. Khi chạy SLAM (`slam:=true`) xe tự xuất phát ở gốc bản đồ (world −4.5, 0). Nếu đặt xe chỗ khác (`x:= y:= yaw:=`, toạ độ world), bấm **2D Pose Estimate** rồi kéo chuột tại chỗ xe đứng.
 - Bấm **Nav2 Goal**, click vào điểm đích trên bản đồ rồi kéo chuột để chọn hướng. Xe tự lập đường (đường xanh) và đi tới.
 
@@ -368,8 +368,8 @@ agv_cmd.py ──/mission/command──► mission_server ──NavigateToPose�
 
 ## Kích thước xe
 
-Đặt ở đầu `agv_description/urdf/agv.urdf.xacro`: thân 2 tầng mica 30 × 30 cm cách nhau 10 cm, 4 trụ ốc ở góc, linh kiện ở tầng 1, lidar đặt trên khối linh kiện **giữa 2 tầng** (mặt quét cao ~0.12 m), mặt nâng trên tầng 2, bánh 65 mm. Giá trị đánh dấu `(*)` là ước lượng (track 0.34 m, wheelbase 0.20 m, độ dày mica...), cần đo xe thật rồi sửa.
+Đặt ở đầu `agv_description/urdf/agv.urdf.xacro`, **lấy từ mô hình cơ khí `CAD/agv.FCStd`** (REPORT.md 4.16, 4.17): thân 2 tầng mica 30 × 30 cm cách nhau 10 cm, bánh Ø68 mm nằm trong khung (track 0.27 m, wheelbase 0.20 m), lidar ở phía trước giữa 2 tầng (lệch tâm xe 0.108 m, mặt quét cao 0.123 m), mặt nâng 26 × 26 cm trên tầng 2 (nâng 3 cm trong ~4.5 s như vít me thật). Hình hiển thị là lưới STL trong `agv_description/meshes/`, sinh bằng `CAD/export_meshes.py`; va chạm vẫn là hộp / trụ. Giá trị đánh dấu `(*)` là ước lượng, cần đo xe thật rồi sửa.
 
-Lidar quét ở ~0.12 m: thấy pallet 15 cm và chân kệ mini, không thấy vật thấp hơn 12 cm. 4 trụ ốc giữa 2 tầng che lidar vài độ; `payload_manager` lọc bỏ.
+Lidar quét ở ~0.12 m: thấy pallet 15 cm và chân kệ mini, không thấy vật thấp hơn. 4 trụ ốc và 4 vít me nâng giữa 2 tầng che lidar tổng cộng ~21°; `payload_manager` lọc bỏ (khung lọc tính quanh tâm xe, tham số `laser_x`). Lidar mô phỏng để tầm tối thiểu 0.05 m (X4 thật 0.12 m) để nó thấy các trụ cách lidar 9–11 cm; nếu không Gazebo bỏ qua chúng.
 
-`effective_track` (0.45 m) là track hiệu dụng cho skid-steer: bánh trượt ngang khi quay nên xe quay ít hơn tính theo `track_width`. Hiệu chỉnh bằng cách cho xe quay tại chỗ rồi đặt `effective_track` mới = `effective_track` hiện tại × `góc_odom / góc_thật`.
+`effective_track` (0.383 m) là track hiệu dụng cho skid-steer: bánh trượt ngang khi quay nên xe quay ít hơn tính theo `track_width`. Hiệu chỉnh bằng cách cho xe quay tại chỗ rồi đặt `effective_track` mới = `effective_track` hiện tại × `góc_odom / góc_thật`.

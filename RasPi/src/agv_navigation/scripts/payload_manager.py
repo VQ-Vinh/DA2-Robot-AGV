@@ -2,11 +2,12 @@
 """Thay doi theo tai cua xe kieu Kiva (dung chung mo phong va xe that).
 
 Doc trang thai co cau nang (/lift/state, /lift/has_load) va:
-  1. Loc scan /scan_raw -> /scan: bo diem roi vao than xe (4 tru oc giua 2 tang che lidar), va
-     khi dang cho ke thi bo ca diem trong khung ke (4 chan ke di theo xe, khong phai vat can).
+  1. Loc scan /scan_raw -> /scan: bo diem roi vao than xe (4 tru oc va 4 vit me nang giua 2 tang che
+     lidar), va khi dang cho ke thi bo ca diem trong khung ke (4 chan ke di theo xe, khong phai vat can).
+     Khung loc tinh quanh TAM XE; lidar dat lech laser_x (m, am = phia sau) nen doi diem ve frame xe truoc.
      Giong LaserScanBoxFilter cua laser_filters (diem bi loc = NaN, AMCL / SLAM / costmap bo qua),
      nhung doi khung loc theo tai nen tu viet.
-  2. Doi footprint cua 2 costmap: xe 0.32 x 0.38 m <-> ke 0.88 (doc) x 0.78 (ngang) m.
+  2. Doi footprint cua 2 costmap: xe 0.32 x 0.32 m (khung 0.30 m theo CAD + 1 cm moi ben) <-> ke 0.88 (doc) x 0.78 (ngang) m.
   3. Gioi han toc do Nav2 khi cho ke (/speed_limit).
   4. Khi mat nang da len het ("up"): xoa 2 costmap. Luc mat nang con ha, lidar da danh dau 4 chan
      ke vao costmap; sau khi nang, diem chan ke bi loc (NaN) nen khong tia nao xoa duoc -> "chan ke
@@ -36,12 +37,14 @@ def rect(hx, hy):
 class PayloadManager(Node):
     def __init__(self):
         super().__init__('payload_manager')
-        # Khung tinh trong frame laser (lidar dat giua xe): than xe gom 4 tru oc o +-0.135 m
+        # Lidar lech khoi tam xe: am = ve phia sau (lidar_x trong agv.urdf.xacro, theo CAD)
+        self.laser_x = self.declare_parameter('laser_x', -0.095).value
+        # Khung tinh quanh tam xe: than xe gom 4 tru oc o (+-0.135, +-0.105) m va 4 vit me o (+-0.103, +-0.086) m
         self.body = self.declare_parameter('body_half', [0.17, 0.17]).value
         # Ke 0.75 m (agv_mission/config/shelves.yaml), chan ngoai cung o 0.375 m. Ke nam lech tren
         # mat nang toi ~8 cm (AMCL lech khi chui gam) -> 0.375 + 0.1 (0.41 da thu: chan ke lot ra)
         self.shelf = self.declare_parameter('shelf_half', [0.48, 0.48]).value
-        self.robot_fp = self.declare_parameter('robot_footprint_half', [0.16, 0.19]).value
+        self.robot_fp = self.declare_parameter('robot_footprint_half', [0.16, 0.16]).value
         # Footprint khi cho (nua doc, nua ngang): ke 0.75 m; nhan dien chan ke cho lech ngang <= 1 cm nhung
         # xe dung qua tam ke 4-6 cm theo chieu doc (REPORT.md 4.10) -> doc 0.375 + 0.065, ngang 0.375 + 0.015.
         # Vuong 0.42 x 0.42 truoc day lam khe toi ke ben canh khi tra ke chi con ~17 cm (REPORT.md 4.13).
@@ -113,8 +116,10 @@ class PayloadManager(Node):
         hx, hy = self.shelf if self.carrying else self.body
         nan = float('nan')
         ranges = list(scan.ranges)
+        lx = self.laser_x
         for i, r in enumerate(ranges):
-            if r < 0.7 and abs(r * cos_a[i]) < hx and abs(r * sin_a[i]) < hy:   # 0.7 = nua duong cheo khung loc (0.68)
+            # 0.8 = nua duong cheo khung loc (0.68) + do lech lidar
+            if r < 0.8 and abs(r * cos_a[i] + lx) < hx and abs(r * sin_a[i]) < hy:
                 ranges[i] = nan
         scan.ranges = ranges
         self.scan_pub.publish(scan)

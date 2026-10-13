@@ -4,7 +4,7 @@ File: `agv.FCStd` (FreeCAD 1.1). Mở bằng **File → Open**.
 
 ## Quy ước
 
-- Đơn vị mm. Gốc toạ độ = `base_footprint` của URDF (mặt đất, tâm xe); X tiến, Y trái, Z lên.
+- Đơn vị mm. Gốc toạ độ = `base_footprint` của URDF (mặt đất, tâm xe); Z lên. **Đầu xe là phía Pi/PCB/camera, tức hướng −X của file CAD** (ban đầu lidar là đầu xe; đổi theo yêu cầu khi gắn camera, mô hình không dựng lại). `export_meshes.py` quay lưới 180° để +X của URDF là hướng tiến.
 - Giá trị âm trong `Params` phải gõ dạng `=-82 mm` (có dấu `=`), nếu không FreeCAD lưu thành chữ.
 - Mọi kích thước nằm trong bảng **`Params`** (đầu cây Model). Sửa giá trị ở cột B rồi nhấn `Ctrl+R`, mô hình tự cập nhật. Cột C ghi nguồn; dòng có chữ `UOC LUONG` là số chưa đo trên linh kiện thật.
 - Hai tấm mica là PartDesign Body (sketch + pad + lỗ), dùng để xuất DXF cắt laser. Động cơ, lidar và Pi là model tải về; bánh và gá động cơ tự vẽ.
@@ -13,15 +13,18 @@ File: `agv.FCStd` (FreeCAD 1.1). Mở bằng **File → Open**.
 
 | Cụm | Nội dung |
 |---|---|
-| `Chassis` | 2 tấm mica 300 × 300 × 5 mm, 4 trụ ốc 100 mm. Tầng 1 có 4 chỗ khoét cho bánh, 4 lỗ chữ nhật 16 × 8 mm luồn dây động cơ, lỗ trụ, 8 lỗ M3 bắt gá động cơ, 4 lỗ M3 cho lidar, 4 lỗ M2.5 cho Pi |
-| `Drive` | `WheelFL` = bánh "65 mm" (STEP: lốp Ø68 × 27, mâm, khớp nối lục giác 12 mm) + GA25-370 có encoder (STEP) + gá chữ L (tự vẽ); FR/RL/RR là Link tới FL. Bánh nằm gọn trong khung, mặt ngoài thụt vào 1.5 mm |
-| `Lidar` | YDLidar X4 (lưới STL) trên 4 trụ M3 × 25 đặt đúng 4 chân đế, ở phía trước xe: tâm đầu quay tại x = 108 mm (`lidar_x`), đuôi quay về sau |
-| `RasPi` | Raspberry Pi 4B (STEP) trên 4 trụ 10 mm, ở giữa xe (mép trước chui dưới đuôi lidar 8 mm, hở 5 mm theo chiều cao), xoay ngang: GPIO quay về sau (phía PCB), USB-C/HDMI quay về trước, USB/Ethernet quay sang trái |
-| `PCB` | Hình giữ chỗ cho mạch PCB 120 × 120 mm trên 4 trụ 30 mm, phía sau Pi; 4 lỗ M3 trên tầng 1 (vị trí lỗ giả định cách mép 4 mm, sửa khi có file PCB thật) |
-| `Battery` | Pin 3S 18650 + mạch BMS (STEP, 54 × 65 × 21 mm), nằm trên tầng 1 ngay dưới PCB, mạch BMS quay lên |
-| `Lift` | Cơ cấu nâng dựng thử, theo linh kiện bán sẵn: mặt nâng 260 × 260 × 10 mm có 4 lỗ Ø9 cho đầu vít; mỗi góc một đai ốc đồng T8 (vành 22 mm, cao 15 mm) treo dưới mặt nâng bằng 2 trụ đồng M3 × 20, đi qua lỗ Ø24 ở tầng 2; 4 vít me T8 tại (±103, ±86) mm quay trong ổ bi F688ZZ ở tầng 1; 4 puly GT2 20 răng + đai kín 860 mm; động cơ bước NEMA17 (STEP, thân 42.3 × 42.3 × 40 mm, puly lỗ 5 mm, đầu nối quay về trước) đặt úp ngược trên tầng 1 ở (0, −124), đỡ bằng 4 trụ đồng M3 × 20 và 2 con lăn ép đai. Đổi `lift_pos` (0–30 mm) trong `Params` hoặc chạy `lift_demo.FCMacro` để xem chuyển động. Đai không tự cập nhật theo `Params` |
+| `Chassis` | 2 tấm mica 300 × 300 × 5 mm, 4 trụ ốc 100 mm, vẽ thành 2 đoạn vì thị trường chỉ có trụ tới 50 mm: đoạn dưới đực-cái 50 + đoạn trên cái-cái 50 vặn vào nhau, hai đầu là lỗ ren, bắt vít M3 × 10 xuyên mica. Tầng 1 có 4 chỗ khoét cho bánh, 4 lỗ chữ nhật 16 × 8 mm luồn dây động cơ tại (±64, ±68) mm (cạnh đuôi encoder, không nằm trên thân động cơ), lỗ trụ, 8 lỗ M3 bắt gá động cơ, 4 lỗ M3 cho lidar, 4 lỗ M2.5 cho Pi, 2 lỗ M3 cho gá camera |
+| `Drive` | `WheelFL` = bánh "65 mm" (STEP: lốp Ø68 × 27, mâm, khớp nối lục giác 12 mm) + GA25-370 có encoder (STEP) + gá chữ L dày 3 mm (tự vẽ theo gá bán sẵn); FR/RL/RR là Link tới FL. Bánh nằm gọn trong khung, mặt ngoài thụt vào 1.5 mm |
+| `Lidar` | YDLidar X4 (lưới STL 101.4 × 71 × 59 mm, tách 4 phần theo màu: đế, đầu quay xanh, động cơ, chân) ở phía sau xe (+X của file CAD): tâm đầu quay tại x = 95 mm (`lidar_x`; mép trước lidar cách mép mica 19.6 mm), đuôi quay về sau. Đáy chân cách mặt tầng 1 17.5 mm (xe thật: trụ M3 × 35 từ mica tới tai bắt). Mặt quét 123 mm, giữa đầu quay (ước lượng) |
+| `RasPi` | Raspberry Pi 4B (STEP) trên 4 trụ M2.5 cái-cái 5 mm, **nằm dưới mạch PCB** (tâm Pi = `pcb_x` − 8 mm), xoay ngang: GPIO quay về sau, USB-C/HDMI quay về trước, USB/Ethernet quay sang trái (thò ra giữa 2 trụ PCB bên trái). Đỉnh cổng USB cách đáy PCB 7.2 mm; đầu cắm dây thẳng đứng trên hàng GPIO không lọt (cần đầu cắm vuông góc hoặc tăng `pcb_standoff`) |
+| `PCB` | Hình giữ chỗ cho mạch PCB 120 × 120 mm trên 4 trụ 30 mm, tâm x = −56 mm (`pcb_x`), che lên Pi; cách lidar 25 mm, cách mép sau 34 mm; 2 trụ sau nằm trong vòng đai nâng, cách đai 5.9 mm; mép PCB cách vít me sau 8 mm; 4 lỗ M3 trên tầng 1 (vị trí lỗ giả định cách mép 4 mm, sửa khi có file PCB thật) |
+| `Battery` | Pack 3S: 3 cell 18650 ghép bằng 6 đế ghép pin (STEP, bước 20 mm), mạch BMS 3S 20A HW-375 (STEP, 58.7 × 20 × 3.55 mm) nằm trên pin; cả pack 63 × 67 × 25.6 mm, **treo dưới tầng 1, chính giữa xe** (tâm (0, 0)), đỉnh mạch cách mica 3 mm. Giữ bằng `BatHolder`: máng chữ U in 3D liền khối (94 × 74 × 31.6 mm, đáy và thành 3 mm, không khoét cửa sổ, ~41 g PETG) có 4 tai 12 × 12 × 6 mm ở góc, mỗi tai 1 lỗ M3 tại (±41, ±29) mm và khoét Ø7 × 2.8 ở mặt trên cho đai ốc hãm của vít cấy. Hai lỗ sau nằm dưới bo Pi (đáy Pi cách mica 2.9 mm) nên dùng vít M3 đầu chìm từ trên mica, khoét côn mica; đáy gá cách đất 19.9 mm. File in: `print/battery_holder.stl` / `.step` (đã lật úp sẵn để in không cần đỡ) |
+| `Camera` | Raspberry Pi Camera Module 3 Wide (STEP; model là bản thường, bản Wide ống kính cao hơn ~1 mm) nhìn thẳng về đầu xe, cố định, ở mép tầng 1 phía Pi/PCB: trục ống kính tại y = 0, cao 88 mm, đầu ống kính ở x ≈ −148 mm (mép mica −150); đỉnh cụm 104 mm, thấp hơn mặt quét lidar (123 mm). Gá chữ L in 3D `CamBracket` (36 × 16.5 × 47.5 mm): 4 vấu có lỗ mồi Ø1.7 cho vít tự ren M2 × 6 bắt camera, khe luồn cáp dẹt cao 67–77 mm (cáp đi phía trên đai nâng, đỉnh đai 64.5 mm, rồi luồn dưới PCB về Pi), đế bắt 2 vít M3 × 12 từ dưới mica tại (−143, ±12.5) + đai ốc. Gá cách đai nâng 10.7 mm, cách mép PCB 16.5 mm. Cáp CSI 15 chân 20 cm đi kèm là đủ (đường đi ~10 cm). File in: `print/camera_bracket.stl` / `.step`. Gá là hình tĩnh, đổi `cam_x`/`cam_z` phải dựng lại |
+| `Lift` | Cơ cấu nâng dựng thử, theo linh kiện bán sẵn: mặt nâng 260 × 260 × 10 mm có 4 lỗ Ø9 cho đầu vít và 8 lỗ M3 (khoét côn) cho vít bắt trụ treo đai ốc; mỗi góc một đai ốc đồng T8 (vành 22 mm, cao 15 mm) treo dưới mặt nâng bằng 2 trụ đồng M3 cái-cái 20 mm, đi qua lỗ Ø24 ở tầng 2; 4 vít me T8 tại (±115, ±72) mm quay trong ổ bi F688ZZ ở tầng 1 (ổ bi cách mép gá động cơ bánh 8.5 mm, puly cách đầu vít gá 16 mm; `lift_x` + `lift_y` phải giữ = 187 mm để đai vẫn dài 852 mm); 4 puly GT2 20 răng + đai kín 852 mm (cỡ có bán); động cơ bước NEMA17 (STEP, thân 42.3 × 42.3 × 40 mm, puly lỗ 5 mm, đầu nối quay về trước) đặt úp ngược trên tầng 1 ở (0, −110), đỡ bằng 4 trụ đồng M3 đực-cái 20 mm và 2 con lăn ép đai (ròng rọc trơn GT2, lỗ 5 mm – ước lượng). Đổi `lift_pos` (0–30 mm) trong `Params` hoặc chạy `lift_demo.FCMacro` để xem chuyển động. Puly, ổ bi, con lăn theo `Params`; riêng đai là hình tĩnh, không tự cập nhật |
 
-Chưa có: model 3D thật của PCB, cách giữ pin (dây đai hoặc gá), chốt định vị kệ và công tắc hành trình của cơ cấu nâng.
+Trụ đồng xuyên mica đều là loại **cái-cái + vít M3 từ phía bên kia tấm mica** (ren đực của trụ chỉ dài ~6 mm, không xuyên nổi mica 5 mm): trụ lidar 35, trụ PCB 30, trụ treo đai ốc nâng 20 (vít đầu chìm M3 × 16 từ trên mặt nâng); riêng trụ đỡ NEMA17 là đực-cái 20 (đầu đực vặn vào lỗ ren của động cơ). Loại trụ ghi ở nhãn từng trụ và cột ghi chú của `Params`.
+
+Chưa có: model 3D thật của PCB, chốt định vị kệ và công tắc hành trình của cơ cấu nâng.
 
 ## Model tải từ GrabCAD
 
@@ -32,15 +35,19 @@ Thư mục `CAD/parts/` không đưa lên git (model của người khác); hìn
 | GA25 + encoder | grabcad.com/library/ga25-gear-motor-with-encoder-1 | STEP |
 | Gá GA25 | grabcad.com/library/ga25-motor-bracket-1 | chỉ có DWG, FreeCAD chưa đọc được nên gá được vẽ lại theo ảnh, kích thước ước lượng |
 | Raspberry Pi 4B | grabcad.com/library/raspberry-pi-4-model-b-1 | STEP |
-| YDLidar X4 | grabcad.com/library/ydlidar-x4-4 | STL (lưới, không phải khối đặc) |
-| Pin 3S 18650 | grabcad.com/library/3s-18650-li-ion-battery-1 | STEP (chỉ lấy 3 cell + mạch BMS; bỏ dây và băng keo) |
+| YDLidar X4 | `parts/ydlidar_x4.STL` (xuất từ model SolidWorks grabcad.com/library/ydlidar-x4-1) | STL; màu tô lại theo ảnh của model |
+| Đế ghép pin 18650 | grabcad.com/library/cell-spacer-battery-18650-1 | STEP (đế 1 cell, ghép 3 cái mỗi đầu) |
+| Mạch BMS 3S 20A HW-375 | grabcad.com/library/18650-lithium-battery-bms-3s-20a-hw-375-rev-2-0-1 | STEP, có ảnh kích thước |
 | Bánh 65 mm | grabcad.com/library/65mm-wheel-1 | STEP (đường kính ngoài thực 68 mm; khớp nối trong model là loại lỗ 3 mm, động cơ GA25 trục 4 mm cần loại lỗ 4 mm) |
+| Pi Camera Module 3 | grabcad.com/library/raspberry-pi-camera-module-v3-2 | STEP; lỗ bắt 21 × 12.5 mm, bo 25 × 23.9 mm khớp bản vẽ hãng |
 | NEMA17 42 × 42 | grabcad.com/library/nema-17-stepper-motor-42x42mm-dimension-accurate-cad-model-1 | STEP, có bản vẽ kích thước kèm theo |
 
-## Khác với URDF
+## Đưa vào mô phỏng
 
-- Bánh Ø68 mm thay vì Ø65 mm: trục bánh cao 34 mm.
-- `track_width` = 270 mm thay vì 340 mm: bánh nằm trong khung 300 mm.
-- `plate1_below_axle` = 17.5 mm thay vì 12.5 mm (theo gá động cơ, ước lượng). Mặt trên tầng 2 ở 161.5 mm (URDF 155 mm); mặt nâng khi hạ ở 173.5 mm (URDF 167 mm, gầm kệ 180 mm).
-- Trụ ốc nằm ở (±135, ±105) mm thay vì 4 góc, để tránh chỗ khoét bánh.
-- Lidar dời lên trước 108 mm (URDF `lidar_x` = 0), thân cao 58.4 mm (URDF 35 mm), đặt trên trụ 25 mm; mặt quét tính ra ở 119.9 mm.
+`export_meshes.py` xuất lưới STL cho `RasPi/src/agv_description/meshes/` và in các số đo để chép vào `agv.urdf.xacro`:
+
+```bash
+"C:/Users/<tên>/AppData/Local/Programs/FreeCAD 1.1/bin/freecadcmd.exe" CAD/export_meshes.py
+```
+
+Từ REPORT.md mục 4.17, URDF dùng số đo và hình dạng của file CAD này (mặt quét lidar 123 mm, khung 300 mm, tốc độ nâng theo vít me). Sửa CAD xong phải chạy lại script rồi chép số vào URDF. Đừng mở file trong hai phiên FreeCAD cùng lúc: phiên lưu sau sẽ ghi đè phiên trước.

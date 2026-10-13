@@ -34,7 +34,11 @@ class ShelfDetector(Node):
         self.leg_width = self.declare_parameter('leg_width', 0.03).value
         self.max_leg_width = self.declare_parameter('max_leg_width', 0.08).value
         self.cluster_gap = self.declare_parameter('cluster_gap', 0.05).value
-        self.min_range = self.declare_parameter('min_range', 0.2).value     # bo tru oc cua xe
+        self.min_range = self.declare_parameter('min_range', 0.2).value
+        # Bo diem thuoc than xe (tru oc, vit me nang): khung quanh tam xe, lidar lech laser_x (am = phia sau)
+        # (cung gia tri voi payload_manager.py va lidar_x trong agv.urdf.xacro)
+        self.laser_x = self.declare_parameter('laser_x', -0.095).value
+        self.body = self.declare_parameter('body_half', [0.17, 0.17]).value
         self.max_range = self.declare_parameter('max_range', 2.5).value
         self.pub = self.create_publisher(PoseStamped, 'detected_dock_pose', 10)
         self.create_subscription(LaserScan, 'scan_raw', self.on_scan, qos_profile_sensor_data)
@@ -64,6 +68,10 @@ class ShelfDetector(Node):
                 continue
             a = scan.angle_min + i * scan.angle_increment
             p = (r * math.cos(a), r * math.sin(a))
+            if abs(p[0] + self.laser_x) < self.body[0] and abs(p[1]) < self.body[1]:
+                close()
+                cur, prev = [], None
+                continue
             if prev is not None and math.hypot(p[0] - prev[0], p[1] - prev[1]) > self.cluster_gap:
                 close()
                 cur = []
@@ -104,7 +112,7 @@ class ShelfDetector(Node):
         for quad in self.squares(pts):
             cx = sum(p[0] for p in quad) / 4
             cy = sum(p[1] for p in quad) / 4
-            if cx < -0.3:          # chi xet ke o truoc xe (hoac xe dang o duoi ke)
+            if cx + self.laser_x < -0.3:   # chi xet ke o truoc xe (hoac xe dang o duoi ke); tinh tu tam xe
                 continue
             dist = math.hypot(cx, cy)
             if best is None or dist < best[0]:

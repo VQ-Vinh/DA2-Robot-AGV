@@ -616,7 +616,7 @@ class OrderManager(Node):
         self.lift_pub.publish(String(data=cmd))
         t0 = time.time()
         time.sleep(0.3)
-        while time.time() - t0 < 10.0:
+        while time.time() - t0 < 15.0:      # vit me nang het hanh trinh mat ~4.5 s (CAD), lift_sim bao loi sau 10 s
             if self.fault:
                 raise Fault(**self.fault)
             if (self.lift_state, self.has_load) == want:

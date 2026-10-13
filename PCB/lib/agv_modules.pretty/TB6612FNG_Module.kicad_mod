@@ -80,4 +80,19 @@
   (pad "16" thru_hole oval (at 15.240 17.780) (size 2.2 1.7) (drill 1.0) (layers "*.Cu" "*.Mask"))
   (fp_text user "GND" (at 11.700 17.780 0) (layer "F.SilkS")
     (effects (font (size 0.7 0.7) (thickness 0.12))))
+  (model "${KICAD10_3DMODEL_DIR}/Connector_PinSocket_2.54mm.3dshapes/PinSocket_1x08_P2.54mm_Vertical.step"
+    (offset (xyz 0 0 0))
+    (scale (xyz 1 1 1))
+    (rotate (xyz 0 0 0))
+  )
+  (model "${KICAD10_3DMODEL_DIR}/Connector_PinSocket_2.54mm.3dshapes/PinSocket_1x08_P2.54mm_Vertical.step"
+    (offset (xyz 15.24 0 0))
+    (scale (xyz 1 1 1))
+    (rotate (xyz 0 0 0))
+  )
+  (model "${KIPRJMOD}/lib/3d/models/tb6612fng.step"
+    (offset (xyz 18.1 -8.89 10.02))
+    (scale (xyz 1 1 1))
+    (rotate (xyz 0 0 0))
+  )
 )
