@@ -72,6 +72,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 09/10/2026 | Mô hình cơ khí FreeCAD: khung, động cơ + bánh, lidar, Raspberry Pi, PCB (giữ chỗ), pin, cơ cấu nâng | #20 |
 | 09–10/10/2026 | Mạch PCB: chốt linh kiện, sơ đồ chân STM32 cho 4 bánh + nâng, sơ đồ nguyên lý KiCad theo khối, rà soát linh kiện thừa, bản xếp PCB nháp | #21 |
 | 13/10/2026 | Cập nhật tiến độ: README (phần cứng đã chốt, mốc thời gian, thư mục PCB), danh sách vấn đề còn mở | — |
+| 13/10/2026 | Dời lidar trong URDF theo CAD; sửa bộ lọc scan và `shelf_detector` tính theo `base_link`; chạy lại test mô phỏng | — |
 
 ---
 
@@ -666,6 +667,27 @@ Các sự cố gặp phải, theo thứ tự:
 - **Còn mở:** dòng kẹt trục GA25 chưa đo (quyết định TB6612FNG có đủ tải); footprint module chưa ướm với module thật; loại đế cầu chì và domino đang chọn theo loại phổ biến (Schurter 0031.8201, bước 22.6 mm; domino bước 5.0 mm), chưa đối chiếu hàng mua; board 120 × 120 mm nhiều khả năng không đủ vì Discovery đã chiếm 66 × 97 mm.
 - **Bài học:** tra tài liệu của board trước khi đề xuất sơ đồ chân; tìm file thiết kế gốc hoặc thư viện có sẵn trước khi tự vẽ footprint, và mở file ra kiểm tra trước khi đưa link; sau mỗi lệnh ghi file của công cụ tự động phải kiểm tra file còn nguyên và có bản sao lưu.
 
+### 4.18. Dời lidar theo mô hình CAD: test mô phỏng hỏng do bộ lọc scan tính theo tâm lidar
+
+- **Mục tiêu:** đưa vị trí lidar trong URDF về đúng mô hình CAD (mục 4.16) và sửa lỗi làm các test Gazebo hỏng sau khi dời lidar.
+- **Thay đổi URDF:** lidar dời từ tâm xe lên trước 108 mm, đặt trên 4 trụ M3 × 25; `laser_frame` đặt ở mặt quét, cách đất 119.9 mm (trước: 117.5 mm); thân lidar cao 58.4 mm (trước: 35 mm). Chiều cao mặt quét trong thân lidar vẫn là ước lượng của CAD.
+- **Sự cố:** sau khi chỉ dời lidar, `order_test` ra **0/3 đơn xong**: xe đứng yên ở trạm sạc, Nav2 báo "Failed to make progress" 4 lần, `order_manager` báo "xe không tiến về đích quá 60 s".
+- **Nguyên nhân (tìm bằng cách nào):** đọc mã các node dùng `/scan_raw`. `payload_manager` lọc thân xe bằng hộp ±0.17 m và kệ đang chở bằng hộp ±0.48 m, cả hai tính **theo gốc toạ độ lidar** (chú thích trong mã ghi "lidar đặt giữa xe"). Lidar lên trước 108 mm thì hộp thân xe tính theo `base_link` chỉ còn phủ x từ −0.062 đến +0.278 m, nên 2 trụ ốc sau (x = −0.135 m) lọt vào `/scan` thành vật cản nằm trong footprint. `shelf_detector` bỏ điểm thân xe bằng `min_range` 0.2 m; với lidar lệch tâm, trụ sau cách lidar 0.27 m nên lọt vào danh sách ứng viên chân kệ.
+- **Cách sửa:** cả hai node đọc vị trí lidar từ TF `base_link → laser_frame` (TF tĩnh, đọc một lần) rồi xét điểm theo toạ độ `base_link`. `shelf_detector` bỏ thêm các điểm nằm trong hộp thân xe như `payload_manager`. Khi chưa có TF, `payload_manager` không phát `/scan` (để khỏi đưa scan chưa lọc vào costmap). Kiểm tra trực tiếp trên scan: trụ trước (−79°, 0.12–0.14 m) và trụ sau (−151°, 0.27 m) đều bị lọc; các điểm còn lại gần xe là khối tiếp điểm trạm sạc.
+- **Môi trường chạy test:** container Linux không GPU, ROS 2 Jazzy + Nav2 + Gazebo Harmonic 8.10 cài qua RoboStack (conda), Mesa render phần mềm + Xvfb, `GZ_IP=127.0.0.1`. Hệ số thời gian thực ≈ 0.99. Máy khác với PC WSL dùng ở các mục trước, nên chỉ so số liệu trong cùng máy.
+- **Kết quả (cùng máy, mỗi ô 1 lần chạy):**
+
+| Bài thử | A: code gốc, lidar ở tâm | B: dời lidar, chưa sửa | C: dời lidar + sửa |
+|---|---|---|---|
+| `order_test` (3 đơn + 1 huỷ) | 3/3, 263 s; kệ lệch 5.4 / 3.9 / 6.2 cm | **0/3**, xe đứng yên | 3/3, 266 s; kệ lệch 5.7 / 8.7 / 6.1 cm |
+| `motion_test` (8 đơn) | 8/8; lệch hướng trả kệ max 2.0°; kệ lệch TB 4.4 cm | – | 8/8; lệch hướng trả kệ max 3.9°; kệ lệch TB 5.4 cm |
+| Quay thừa TB (max), bước `dock` / `return_dock` | 104° (658°) / 28° (57°) | – | 25° (54°) / 21° (76°) |
+| `fault_test` | – | – | 2/3: dừng khẩn và rơi kệ đạt; tường chắn **sai** (có cảnh báo nhưng không thành sự cố vì xe men theo tường, giống lần f10 ở mục 4.13) |
+| `battery_test` (pin 40 %, ×20) | – | – | 3/3 đơn, có giữ sạc và sạc giữa các đơn |
+
+  Kệ lệch tâm sau khi trả với C cao hơn A khoảng 1 cm trung bình, lệch hướng max 3.9° so với 2.0°. Mỗi bên mới chạy 1 lần nên chưa phân biệt được do lidar dời hay do dao động giữa các lần chạy. Cột "kệ trượt trên xe khi chờ" của `motion_test` báo 3–25 cm ở **cả A và C**, nên có vẻ do cách đo (đọc vị trí kệ bằng lệnh gz khi kệ đang khoá) chứ không phải do việc dời lidar; chưa kiểm chứng.
+- **Bài học:** tham số hình học viết cứng theo một giả định ("lidar ở tâm") sẽ hỏng âm thầm khi phần cứng đổi; lấy vị trí cảm biến từ TF/URDF để chỉ còn một chỗ phải sửa.
+
 ---
 
 ## 5. Tổng hợp sai lầm và bài học
@@ -702,6 +724,7 @@ Các sự cố gặp phải, theo thứ tự:
 | Kiva | Giải quyết vùng chết bằng quay tại chỗ chính xác | Đo trước: một lần Spin quay thừa ~30 deg, chỉ chỉnh được khi đang đi |
 | Định vị | Chỉnh covariance / ngưỡng AMCL để chữa trôi do bias con quay | Đo vận tốc quay của EKF trước; sửa tận gốc: ước lượng bias khi bánh đứng yên |
 | Mô phỏng | Gửi lệnh gz một lần rồi coi như xong | Đọc trạng thái thật và gửi lại tới khi khớp |
+| Mô phỏng | Viết cứng khung lọc scan theo gốc lidar (giả định lidar ở tâm xe) | Lấy vị trí cảm biến từ TF; đổi phần cứng chỉ sửa URDF |
 
 ## 6. Vấn đề còn mở
 Đã giải quyết (xem 4.6): AMCL lệch ở khu phía đông; "collision ahead" trong lối hẹp (từ 24 lần một chặng xuống 0–4 lần một nhiệm vụ).
@@ -709,7 +732,7 @@ Các sự cố gặp phải, theo thứ tự:
 1. **Hệ thống đôi khi khựng khoảng 1 s** khi máy tải nặng (vòng điều khiển tụt xuống 9.6 Hz, TF cũ). **Trong mô phỏng đã giảm hẳn** nhờ bước vật lý 3 ms (mục 4.8: "Control loop missed" 0–1 mỗi lần so với 11–152). Vẫn cần theo dõi khi chạy trên Pi 4 (yếu hơn PC).
 2. **Vùng chết của động cơ:** xe không đi chậm hơn 0.34 m/s và không quay chậm hơn 1.5 rad/s. Nên cải thiện điều khiển tốc độ thấp trên STM32 để hạ `SPD_RPM_MIN`. Đo ở mục 4.9: 50 RPM làm xe tới staging lệch góc ít hơn ~4 lần và đặt kệ chính xác hơn. Mục 4.14: đây là nguyên nhân chính khiến xe "vòng vòng". Tắt vùng chết thì góc quay thừa khi chui gầm giảm từ 627° xuống 4°; phần mềm mới chỉ giảm được một phần. Hướng thử: ở tốc độ thấp, firmware "đá" duty cao lúc khởi động rồi để PID giữ tốc độ, vì ma sát động nhỏ hơn ma sát tĩnh (chưa kiểm chứng trên xe thật).
 3. **Phần cứng chưa làm:** cầu nối IMU phát `/imu/raw` (node `imu_bias` trừ bias con quay rồi mới tới EKF, mục 4.15), chốt định vị trên mặt nâng (kệ không trượt khi xe quay; mô phỏng đã khoá kệ, mục 4.14), firmware 4 bánh + cơ cấu nâng (đã có sơ đồ chân trong CubeMX, mục 4.17, chưa có code), node cầu nối UART Pi ↔ STM32 (phải có giữ bán kính cua + covariance cho odom), YDLidar, BNO055, INA169. Nhánh mô phỏng (`battery_sim.py`, `RasPi/README.md`) vẫn ghi INA226.
-4. **Kích thước xe** (track, wheelbase) vẫn là ước lượng, cần đo xe thật. Mô hình FreeCAD (mục 4.16) đổi track còn 270 mm (bánh nằm trong khung), thân xe cao hơn URDF 5 mm, lidar thật cao 58.4 mm; URDF, `effective_track` và các tham số Nav2 chưa cập nhật theo. Cần đo GA25-370, gá động cơ và YDLidar thật.
+4. **Kích thước xe** (track, wheelbase) vẫn là ước lượng, cần đo xe thật. Mô hình FreeCAD (mục 4.16) đổi track còn 270 mm (bánh nằm trong khung), bánh thực Ø68 mm, thân xe cao hơn URDF 5 mm; vị trí lidar đã đưa vào URDF (mục 4.18), còn track, bánh, chiều cao thân, `effective_track` và các tham số Nav2 chưa cập nhật theo. URDF cũng chưa có 4 vít me nâng (CAD: mỗi vít che lidar 2–5.3°) và trụ ốc vẫn ở góc thay vì (±135, ±105) mm. Cần đo GA25-370, gá động cơ và YDLidar thật.
 5. **Node Python trong mô phỏng tốn CPU vì `/clock`:** đã giảm từ 38–75 % xuống 30–48 % mỗi node nhờ bước 3 ms (mục 4.8); vẫn còn vì `/clock` 333 tin/s. Chỉ có trong mô phỏng.
 6. **Dashboard chưa có đăng nhập:** chỉ mở trong LAN / Tailscale.
 7. **Cửa sổ Gazebo crash lúc khởi động** (driver NVIDIA D3D12 của WSL, 1/4 lần chạy): launch tự mở lại (mục 4.15). Có 1 lần xe không rời được trạm sạc vì "vật cản" ngay sau xe, chưa rõ nguyên nhân, chạy lại thì hết.
