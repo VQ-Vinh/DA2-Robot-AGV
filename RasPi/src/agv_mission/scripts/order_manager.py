@@ -145,6 +145,9 @@ class OrderManager(Node):
         self.lift_pub = self.create_publisher(String, 'lift/command', 10)
         # Bao payload_manager xe dang o trong chan do pallet (dung footprint xe, khong dung footprint pallet)
         self.in_slot_pub = self.create_publisher(Bool, 'payload/in_slot', latched)
+        # O dich cho shelf_detector: chon dung chan do cua o nay, khong nham o ben canh (REPORT.md 4.19)
+        self.target_pub = self.create_publisher(PoseStamped, 'shelf_detector/target', QoSProfile(
+            depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         self.create_subscription(String, 'order/command', self.on_command, 10)
         self.create_subscription(String, 'lift/state', lambda m: setattr(self, 'lift_state', m.data), latched)
@@ -541,6 +544,9 @@ class OrderManager(Node):
         g = DockRobot.Goal()
         g.navigate_to_staging_pose = False
         if detect:
+            sl = self.slots[slot]
+            self.target_pub.publish(self.pose(sl['x'], sl['y'], sl['yaw']))
+            time.sleep(0.2)
             g.use_dock_id, g.dock_id = True, f'slot_{slot}'          # shelf_dock: theo chan ke
         else:
             sl = self.slots[slot]
