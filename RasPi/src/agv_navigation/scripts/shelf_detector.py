@@ -9,10 +9,15 @@ ke THAT, khong theo vi tri o tren ban do: ke tra ve lech vai cm moi lan, lau dan
 AMCL cung lech ~5 cm. Dung chung mo phong va xe that.
 
 Cach tim (moi scan):
+  0. Bo diem roi vao than xe (khung body_half quanh base_link, nhu payload_manager): lidar dat lech
+     tam (CAD: phia truoc 108 mm) nen tru oc / vit nang phia sau xe cach lidar > min_range.
   1. Gom diem lien tiep cach nhau < cluster_gap thanh cum; giu cum nho (< max_leg_width): chan ke,
      khong phai tuong. Tam cum lui them nua be rong chan theo tia (lidar chi thay mat truoc).
   2. Tim 4 cum tao hinh vuong canh leg_spacing (sai so side_tol): 2 cap chan canh nhau + duong cheo.
-  3. Chon hinh vuong gan xe nhat trong vung truoc xe (max_range). Huong = huong canh vuong gan voi
+  3. Co o dich (shelf_detector/target, PoseStamped frame map, order_manager gui truoc khi chui gam): chon
+     hinh vuong gan o dich nhat, xa hon target_tolerance thi coi nhu khong thay. Chi chon "gan xe nhat"
+     thi khi xe den staging con lech 30-40 deg (vung chet dong co), o ben canh gan hon -> xe chui nham o,
+     quy dao sat tru, docking bao va cham 905 (REPORT.md 4.19). Chua co o dich: gan xe nhat trong vung truoc xe. Huong = huong canh vuong gan voi
      huong xe nhat (xe dang huong vao ke), tuc yaw trong [-45, 45] deg so voi lidar.
 Khong thay ke thi khong phat gi: docking_server tu bao "Lost detection" sau external_detection_timeout.
 """
@@ -21,8 +26,10 @@ import math
 import rclpy
 from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
+from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
+from tf2_ros import Buffer, TransformException, TransformListener
 
 
 class ShelfDetector(Node):
@@ -36,6 +43,15 @@ class ShelfDetector(Node):
         self.cluster_gap = self.declare_parameter('cluster_gap', 0.05).value
         self.min_range = self.declare_parameter('min_range', 0.2).value     # bo tru oc cua xe
         self.max_range = self.declare_parameter('max_range', 2.5).value
+        self.target_tol = self.declare_parameter('target_tolerance', 0.35).value   # AMCL lech ~5-10 cm
+        self.target = None         # PoseStamped o dich (frame map)
+        self.create_subscription(PoseStamped, 'shelf_detector/target', self.on_target,
+                                 QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        self.base_frame = self.declare_parameter('base_frame', 'base_link').value
+        self.body = self.declare_parameter('body_half', [0.17, 0.17]).value   # giong payload_manager
+        self.laser = None          # (x, y, yaw) cua lidar trong base_link
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
         self.pub = self.create_publisher(PoseStamped, 'detected_dock_pose', 10)
         self.create_subscription(LaserScan, 'scan_raw', self.on_scan, qos_profile_sensor_data)
         self.found = None
@@ -64,6 +80,10 @@ class ShelfDetector(Node):
                 continue
             a = scan.angle_min + i * scan.angle_increment
             p = (r * math.cos(a), r * math.sin(a))
+            if self.in_body(p):
+                close()
+                cur, prev = [], None
+                continue
             if prev is not None and math.hypot(p[0] - prev[0], p[1] - prev[1]) > self.cluster_gap:
                 close()
                 cur = []
@@ -72,6 +92,40 @@ class ShelfDetector(Node):
         close()
         # Cum dau va cuoi cua scan 360 do co the la mot cum bi cat doi: bo qua truong hop hiem nay
         return out
+
+    def in_body(self, p):
+        lx, ly, lyaw = self.laser
+        c, s = math.cos(lyaw), math.sin(lyaw)
+        bx, by = lx + c * p[0] - s * p[1], ly + s * p[0] + c * p[1]
+        return abs(bx) < self.body[0] and abs(by) < self.body[1]
+
+    def lookup_laser(self, frame):
+        try:
+            t = self.tf_buffer.lookup_transform(self.base_frame, frame, Time())
+        except TransformException as e:
+            self.get_logger().warn(f'chua co TF {self.base_frame} -> {frame}: {e}', throttle_duration_sec=5.0)
+            return None
+        tr, q = t.transform.translation, t.transform.rotation
+        return tr.x, tr.y, math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
+
+    def on_target(self, msg):
+        self.target = msg if msg.header.frame_id else None   # frame_id rong = bo o dich
+        self.found = None
+
+    def target_in(self, frame):
+        """Vi tri o dich trong frame lidar, None neu khong co o dich hoac chua co TF."""
+        if self.target is None:
+            return None
+        try:
+            t = self.tf_buffer.lookup_transform(frame, self.target.header.frame_id, Time())
+        except TransformException as e:
+            self.get_logger().warn(f'chua co TF {frame} -> {self.target.header.frame_id}: {e}',
+                                   throttle_duration_sec=5.0)
+            return None
+        tr, q = t.transform.translation, t.transform.rotation
+        yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
+        px, py = self.target.pose.position.x, self.target.pose.position.y
+        return tr.x + math.cos(yaw) * px - math.sin(yaw) * py, tr.y + math.sin(yaw) * px + math.cos(yaw) * py
 
     def squares(self, pts):
         s, tol = self.side, self.side_tol
@@ -99,14 +153,24 @@ class ShelfDetector(Node):
         return found
 
     def on_scan(self, scan):
+        if self.laser is None:
+            self.laser = self.lookup_laser(scan.header.frame_id)
+            if self.laser is None:
+                return
         pts = [p for p in self.legs(scan) if math.hypot(*p) < self.max_range]
+        goal = self.target_in(scan.header.frame_id)
         best = None
         for quad in self.squares(pts):
             cx = sum(p[0] for p in quad) / 4
             cy = sum(p[1] for p in quad) / 4
-            if cx < -0.3:          # chi xet ke o truoc xe (hoac xe dang o duoi ke)
+            if goal is not None:
+                dist = math.hypot(cx - goal[0], cy - goal[1])
+                if dist > self.target_tol:
+                    continue
+            elif cx < -0.3:        # chi xet ke o truoc xe (hoac xe dang o duoi ke)
                 continue
-            dist = math.hypot(cx, cy)
+            else:
+                dist = math.hypot(cx, cy)
             if best is None or dist < best[0]:
                 best = (dist, cx, cy, quad)
         if best is None:

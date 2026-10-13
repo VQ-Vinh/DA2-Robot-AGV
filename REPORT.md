@@ -20,10 +20,10 @@ Quy ước mỗi mục:
 
 | Khối | Linh kiện |
 |---|---|
-| Máy tính trên xe | Raspberry Pi 4 (4 GB), Ubuntu Server 24.04, ROS 2 Jazzy |
+| Máy tính trên xe | Raspberry Pi 4 (4 GB), Ubuntu Server 24.04, ROS 2 Jazzy → đổi sang Raspberry Pi 5 (PR #21) |
 | Vi điều khiển | STM32F4 Discovery (STM32F407), FreeRTOS, nối với Pi qua UART (USART2) |
-| Động cơ | 4 × GA25-370 có encoder, kiểu skid-steer (4 bánh thường), 2 × driver L298N |
-| Cảm biến | YDLidar X2/X4 (USB), IMU BNO055, đo pin INA226, PiCamera |
+| Động cơ | 4 × GA25-370 có encoder, kiểu skid-steer (4 bánh thường), 2 × driver L298N → đổi sang 2 × TB6612FNG (PR #21); cơ cấu nâng dùng động cơ bước + A4988 |
+| Cảm biến | YDLidar X2/X4 (USB), IMU BNO055, đo pin INA226 → đổi sang INA169 5 A (PR #21), PiCamera |
 | Khung | 2 tầng mica 30 × 30 cm cách nhau 10 cm, bánh 65 mm |
 
 **Kiến trúc phần mềm:**
@@ -71,6 +71,9 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 09/10/2026 | Gộp #14–#17 vào `main`; README gốc thành trang giới thiệu có sơ đồ (kiến trúc, tiến độ, cấu trúc repo) | #18 |
 | 09/10/2026 | Mô hình cơ khí FreeCAD: khung, động cơ + bánh, lidar, Raspberry Pi, PCB (giữ chỗ), pin, cơ cấu nâng | #20 |
 | 09–10/10/2026 | Mạch PCB: chốt linh kiện, sơ đồ chân STM32 cho 4 bánh + nâng, sơ đồ nguyên lý KiCad theo khối, rà soát linh kiện thừa, bản xếp PCB nháp | #21 |
+| 13/10/2026 | Cập nhật tiến độ: README (phần cứng đã chốt, mốc thời gian, thư mục PCB), danh sách vấn đề còn mở | — |
+| 13/10/2026 | Dời lidar trong URDF theo CAD; sửa bộ lọc scan và `shelf_detector` tính theo `base_link`; chạy lại test mô phỏng | — |
+| 13/10/2026 | Kho pallet: chân đỡ 4 trụ cố định + pallet có thùng hàng; lập lại bản đồ; trả pallet theo trụ, detector chọn theo ô đích | — |
 
 ---
 
@@ -665,6 +668,57 @@ Các sự cố gặp phải, theo thứ tự:
 - **Còn mở:** dòng kẹt trục GA25 chưa đo (quyết định TB6612FNG có đủ tải); footprint module chưa ướm với module thật; loại đế cầu chì và domino đang chọn theo loại phổ biến (Schurter 0031.8201, bước 22.6 mm; domino bước 5.0 mm), chưa đối chiếu hàng mua; board 120 × 120 mm nhiều khả năng không đủ vì Discovery đã chiếm 66 × 97 mm.
 - **Bài học:** tra tài liệu của board trước khi đề xuất sơ đồ chân; tìm file thiết kế gốc hoặc thư viện có sẵn trước khi tự vẽ footprint, và mở file ra kiểm tra trước khi đưa link; sau mỗi lệnh ghi file của công cụ tự động phải kiểm tra file còn nguyên và có bản sao lưu.
 
+### 4.18. Dời lidar theo mô hình CAD: test mô phỏng hỏng do bộ lọc scan tính theo tâm lidar
+
+- **Mục tiêu:** đưa vị trí lidar trong URDF về đúng mô hình CAD (mục 4.16) và sửa lỗi làm các test Gazebo hỏng sau khi dời lidar.
+- **Thay đổi URDF:** lidar dời từ tâm xe lên trước 108 mm, đặt trên 4 trụ M3 × 25; `laser_frame` đặt ở mặt quét, cách đất 119.9 mm (trước: 117.5 mm); thân lidar cao 58.4 mm (trước: 35 mm). Chiều cao mặt quét trong thân lidar vẫn là ước lượng của CAD.
+- **Sự cố:** sau khi chỉ dời lidar, `order_test` ra **0/3 đơn xong**: xe đứng yên ở trạm sạc, Nav2 báo "Failed to make progress" 4 lần, `order_manager` báo "xe không tiến về đích quá 60 s".
+- **Nguyên nhân (tìm bằng cách nào):** đọc mã các node dùng `/scan_raw`. `payload_manager` lọc thân xe bằng hộp ±0.17 m và kệ đang chở bằng hộp ±0.48 m, cả hai tính **theo gốc toạ độ lidar** (chú thích trong mã ghi "lidar đặt giữa xe"). Lidar lên trước 108 mm thì hộp thân xe tính theo `base_link` chỉ còn phủ x từ −0.062 đến +0.278 m, nên 2 trụ ốc sau (x = −0.135 m) lọt vào `/scan` thành vật cản nằm trong footprint. `shelf_detector` bỏ điểm thân xe bằng `min_range` 0.2 m; với lidar lệch tâm, trụ sau cách lidar 0.27 m nên lọt vào danh sách ứng viên chân kệ.
+- **Cách sửa:** cả hai node đọc vị trí lidar từ TF `base_link → laser_frame` (TF tĩnh, đọc một lần) rồi xét điểm theo toạ độ `base_link`. `shelf_detector` bỏ thêm các điểm nằm trong hộp thân xe như `payload_manager`. Khi chưa có TF, `payload_manager` không phát `/scan` (để khỏi đưa scan chưa lọc vào costmap). Kiểm tra trực tiếp trên scan: trụ trước (−79°, 0.12–0.14 m) và trụ sau (−151°, 0.27 m) đều bị lọc; các điểm còn lại gần xe là khối tiếp điểm trạm sạc.
+- **Môi trường chạy test:** container Linux không GPU, ROS 2 Jazzy + Nav2 + Gazebo Harmonic 8.10 cài qua RoboStack (conda), Mesa render phần mềm + Xvfb, `GZ_IP=127.0.0.1`. Hệ số thời gian thực ≈ 0.99. Máy khác với PC WSL dùng ở các mục trước, nên chỉ so số liệu trong cùng máy.
+- **Kết quả (cùng máy, mỗi ô 1 lần chạy):**
+
+| Bài thử | A: code gốc, lidar ở tâm | B: dời lidar, chưa sửa | C: dời lidar + sửa |
+|---|---|---|---|
+| `order_test` (3 đơn + 1 huỷ) | 3/3, 263 s; kệ lệch 5.4 / 3.9 / 6.2 cm | **0/3**, xe đứng yên | 3/3, 266 s; kệ lệch 5.7 / 8.7 / 6.1 cm |
+| `motion_test` (8 đơn) | 8/8; lệch hướng trả kệ max 2.0°; kệ lệch TB 4.4 cm | – | 8/8; lệch hướng trả kệ max 3.9°; kệ lệch TB 5.4 cm |
+| Quay thừa TB (max), bước `dock` / `return_dock` | 104° (658°) / 28° (57°) | – | 25° (54°) / 21° (76°) |
+| `fault_test` | – | – | 2/3: dừng khẩn và rơi kệ đạt; tường chắn **sai** (có cảnh báo nhưng không thành sự cố vì xe men theo tường, giống lần f10 ở mục 4.13) |
+| `battery_test` (pin 40 %, ×20) | – | – | 3/3 đơn, có giữ sạc và sạc giữa các đơn |
+
+  Kệ lệch tâm sau khi trả với C cao hơn A khoảng 1 cm trung bình, lệch hướng max 3.9° so với 2.0°. Mỗi bên mới chạy 1 lần nên chưa phân biệt được do lidar dời hay do dao động giữa các lần chạy. Cột "kệ trượt trên xe khi chờ" của `motion_test` báo 3–25 cm ở **cả A và C**, nên có vẻ do cách đo (đọc vị trí kệ bằng lệnh gz khi kệ đang khoá) chứ không phải do việc dời lidar; chưa kiểm chứng.
+- **Bài học:** tham số hình học viết cứng theo một giả định ("lidar ở tâm") sẽ hỏng âm thầm khi phần cứng đổi; lấy vị trí cảm biến từ TF/URDF để chỉ còn một chỗ phải sửa.
+
+### 4.19. Dựng lại kho: pallet có thùng hàng trên chân đỡ 4 trụ cố định
+
+- **Mục tiêu (theo yêu cầu):** thay kệ mini 4 chân bằng pallet có thùng hàng, kê trên 4 trụ ở góc. Đã chốt với người làm đồ án: trụ **cố định tại ô** (xe nhấc pallet khỏi trụ, chỉ chở pallet), pallet giữ cỡ 0.75 m để không đổi bố trí ô, thùng hàng gắn cứng vào pallet. File CAD pallet ở `CAD/parts/` không lên git (`.gitignore`) nên pallet được dựng theo kiểu phổ biến (3 ván đáy, 3 thanh đỡ, 5 ván mặt), chưa theo file CAD.
+- **Cách làm:** `make_warehouse.py` sinh 10 chân đỡ tĩnh (4 trụ 3 × 3 cm, cao 0.18 m, đúng chỗ chân kệ cũ) và 8 pallet động có plugin `DetachableJoint` như kệ cũ. Bản đồ lập lại bằng SLAM theo `drive_route.py`: thấy 40/40 trụ (bản cũ 32/40, 2 ô trống N5/S5 không có chân), 98.9 % ô vật cản cách vật thật ≤ 5 cm. Mặt nạ vùng cấm sinh lại.
+- **Sự cố và cách sửa** (mỗi dòng là một lần chạy thử trên container, ghi theo thứ tự gặp):
+
+| # | Sự cố | Nguyên nhân (tìm bằng cách nào) | Cách sửa |
+|---|---|---|---|
+| 1 | Chạy thử đầu tiên: xe không rời được trạm sạc, log đầy "Detected jump back in time" | Mô phỏng SLAM chạy trước đó chưa tắt, 2 Gazebo cùng phát `/clock` (lỗi của người chạy test, không phải của world) | Tắt hết rồi chạy lại |
+| 2 | Lùi ra sau khi nâng pallet có thể báo va chạm | Đọc `controller.cpp` của `opennav_docking` (Jazzy): docking kiểm va chạm theo footprint, chỉ bỏ qua 0.45 m cuối. Footprint pallet (0.88 × 0.78 m) trùm 4 trụ suốt 0.8 m đầu, dù pallet thật bay qua trên trụ | `order_manager` báo `payload/in_slot` ở các bước nâng, lùi ra, trả, hạ; `payload_manager` giữ footprint thân xe lúc đó. Bỏ khung lọc "chân kệ đi theo xe" (pallet không có gì dưới mặt quét) |
+| 3 | `order_test`: "hạ kệ thất bại: state down, has_load True" sau khi trả pallet lệch 5.3 cm | Tính lại hình học: tâm trụ cách nhau 0.72 m, pallet 0.75 m → lệch quá 1.5 cm là một cặp trụ lọt ra ngoài mép, pallet chúi xuống mặt nâng | Mỗi trụ có tấm đỡ 12 × 12 cm cao hơn mặt quét lidar (lidar và bản đồ không đổi); 2 ván đáy đầu pallet rộng 14 cm. Pallet đặt lệch tới ~10 cm vẫn nằm trên 4 tấm |
+| 4 | `motion_test` 8/8 nhưng bước trả pallet TB 13.9 s, quay thừa TB 420° (lớn nhất 1799°), 17 lần docking báo va chạm (905); pallet trả lệch 1.0–9.9 cm | Trả vẫn theo bản đồ (`slot_dock`); ô giờ có trụ nên AMCL lệch vài cm + góc lệch là quỹ đạo sượt trụ, xe lùi ra vào lại | Ô trống còn 4 trụ → trả cũng chui theo trụ (`shelf_dock`, tham số `return_detect`) |
+| 5 | Sau sửa 4: pallet trả chuẩn (lệch 0.3–1.7 cm) nhưng bước trả vẫn TB 14.7 s, quay thừa 496°, 16 lần 905 | Đọc log từng đơn: lúc bắt đầu trả, `shelf_detector` báo tâm (1.20, 1.44) m, tức chân đỡ ô bên cạnh. Thử riêng: đặt xe đúng staging ô N5 thì detector thấy đúng (0.89, 0.00) m → lỗi chỉ khi xe tới staging còn lệch 30–40° (vùng chết), "gần xe nhất" là ô bên cạnh | `order_manager` gửi ô đích lên `shelf_detector/target`; detector chọn chân đỡ gần ô đích nhất, bỏ hình vuông cách ô đích > 0.35 m |
+| 6 | `fault_test` 0/3 hai lần liền (kho cũ cùng máy: 2/3): sau khi gỡ tường và bấm "đã xử lý" xe vẫn đứng yên, Nav2 hồi phục liên tục, BackUp báo "Collision Ahead" | Ghi vị trí thật mỗi 2 s: tường chặn kín kho, trong 60 s trước khi báo sự cố xe tự đi vòng qua phía đông vào **hành lang sau dãy ô S** (rộng ~1.13 m) rồi quay và kẹt (pallet 0.88 × 0.78 m cần ~1.18 m để quay). Kho cũ không kẹt vì khi chở, bộ lọc bỏ mọi điểm lidar trong 48 cm quanh xe nên costmap không thấy kệ cố định sát bên (an toàn kém hơn, chỉ "may"). Một lần chạy thêm bị loại vì node của workspace đối chứng chưa tắt, 2 `order_manager` cùng điều khiển xe | Hai hành lang sau dãy ô không bước nào cần (staging ở lối giữa) → đưa vào vùng cấm (`back_keepout_y` trong `shelves.yaml`, `make_keepout_mask.py`) |
+
+- **Kết quả `motion_test` (8 đơn, cùng máy):**
+
+| | Kệ mini (4.18, C) | Pallet, trả theo bản đồ (sự cố 4) | Pallet, trả theo trụ + ô đích (sau sửa 5) |
+|---|---|---|---|
+| Đơn xong | 8/8 | 8/8 | 8/8 |
+| Bước trả: thời gian TB / quay thừa TB (max) | 6.3 s / 21° (76°) | 13.9 s / 420° (1799°) | **5.6 s / 16° (64°)** |
+| Docking báo va chạm (905) | 0 | 17 | **0** |
+| Pallet / kệ sau đơn lệch tâm ô | 2.1–7.3 cm | 1.0–9.9 cm | **0.2–2.1 cm** |
+| Xoay sau đơn | 0.1–4.6° | 0.2–2.6° | 0.2–2.9° |
+
+  Xe khi trả xong vẫn dừng quá tâm ô 3.7–4.5 cm theo chiều dọc (giống mục 4.10, do vùng chết), lệch ngang ≤ 0.5 cm. Bước staging vẫn quay thừa TB ~320° (có từ trước, mục 4.14).
+- **Bài thử khác (sau sửa 6):** `order_test` 3/3, pallet lệch 0.5–1.3 cm; `battery_test` 3/3 đơn, có giữ sạc và sạc giữa các đơn; `fault_test` 2/3, bằng kho cũ chạy cùng máy (dừng khẩn, rơi kệ đạt; tường chắn có cảnh báo, đơn xong, nhưng không thành sự cố, giống mục 4.13).
+- **Còn mở:** dáng pallet chưa theo file CAD; chiều cao chân đỡ 0.18 m theo URDF cũ, theo mô hình CAD xe (mục 4.16) thì mặt nâng khi hạ ở 173.5 mm, khe chỉ còn 6.5 mm; lấy hàng giờ bám theo chân đỡ chứ không theo pallet, nên pallet lệch trên chân đỡ (≤ 2 cm sau khi sửa) sẽ nằm lệch chừng đó trên mặt nâng. Cột "kệ trượt trên xe khi chờ" của `motion_test` vẫn báo 3–26 cm như ở 4.18 (nghi do cách đo, chưa kiểm chứng).
+- **Bài học:** đổi vật trong world thì xét lại mọi giả định hình học dựa trên vật cũ: footprint khi chở, dung sai đặt hàng, tiêu chí chọn mục tiêu của bộ nhận diện. Mỗi giả định hỏng một kiểu khác nhau, chỉ lộ ra khi chạy đủ chu trình.
+
 ---
 
 ## 5. Tổng hợp sai lầm và bài học
@@ -701,19 +755,24 @@ Các sự cố gặp phải, theo thứ tự:
 | Kiva | Giải quyết vùng chết bằng quay tại chỗ chính xác | Đo trước: một lần Spin quay thừa ~30 deg, chỉ chỉnh được khi đang đi |
 | Định vị | Chỉnh covariance / ngưỡng AMCL để chữa trôi do bias con quay | Đo vận tốc quay của EKF trước; sửa tận gốc: ước lượng bias khi bánh đứng yên |
 | Mô phỏng | Gửi lệnh gz một lần rồi coi như xong | Đọc trạng thái thật và gửi lại tới khi khớp |
+| Mô phỏng | Viết cứng khung lọc scan theo gốc lidar (giả định lidar ở tâm xe) | Lấy vị trí cảm biến từ TF; đổi phần cứng chỉ sửa URDF |
+| Kiva | Detector chọn hình vuông "gần xe nhất" | Cho bộ nhận diện biết mục tiêu dự kiến, loại ứng viên xa mục tiêu |
+| Mô phỏng | Đặt trụ chân đỡ đúng góc pallet (dung sai 1.5 cm) | Tính dung sai đặt hàng theo sai số đã đo (4–10 cm) trước khi chốt hình học |
 
 ## 6. Vấn đề còn mở
 Đã giải quyết (xem 4.6): AMCL lệch ở khu phía đông; "collision ahead" trong lối hẹp (từ 24 lần một chặng xuống 0–4 lần một nhiệm vụ).
 
 1. **Hệ thống đôi khi khựng khoảng 1 s** khi máy tải nặng (vòng điều khiển tụt xuống 9.6 Hz, TF cũ). **Trong mô phỏng đã giảm hẳn** nhờ bước vật lý 3 ms (mục 4.8: "Control loop missed" 0–1 mỗi lần so với 11–152). Vẫn cần theo dõi khi chạy trên Pi 4 (yếu hơn PC).
 2. **Vùng chết của động cơ:** xe không đi chậm hơn 0.34 m/s và không quay chậm hơn 1.5 rad/s. Nên cải thiện điều khiển tốc độ thấp trên STM32 để hạ `SPD_RPM_MIN`. Đo ở mục 4.9: 50 RPM làm xe tới staging lệch góc ít hơn ~4 lần và đặt kệ chính xác hơn. Mục 4.14: đây là nguyên nhân chính khiến xe "vòng vòng". Tắt vùng chết thì góc quay thừa khi chui gầm giảm từ 627° xuống 4°; phần mềm mới chỉ giảm được một phần. Hướng thử: ở tốc độ thấp, firmware "đá" duty cao lúc khởi động rồi để PID giữ tốc độ, vì ma sát động nhỏ hơn ma sát tĩnh (chưa kiểm chứng trên xe thật).
-3. **Phần cứng chưa làm:** cầu nối IMU phát `/imu/raw` (node `imu_bias` trừ bias con quay rồi mới tới EKF, mục 4.15), chốt định vị trên mặt nâng (kệ không trượt khi xe quay; mô phỏng đã khoá kệ, mục 4.14), mở rộng 4 bánh, node cầu nối UART Pi ↔ STM32 (phải có giữ bán kính cua + covariance cho odom), YDLidar, BNO055, INA226.
-4. **Kích thước xe** (track, wheelbase) vẫn là ước lượng, cần đo xe thật. Mô hình FreeCAD (mục 4.16) đổi track còn 270 mm (bánh nằm trong khung), thân xe cao hơn URDF 5 mm, lidar thật cao 58.4 mm; URDF, `effective_track` và các tham số Nav2 chưa cập nhật theo. Cần đo GA25-370, gá động cơ và YDLidar thật.
+3. **Phần cứng chưa làm:** cầu nối IMU phát `/imu/raw` (node `imu_bias` trừ bias con quay rồi mới tới EKF, mục 4.15), chốt định vị trên mặt nâng (kệ không trượt khi xe quay; mô phỏng đã khoá kệ, mục 4.14), firmware 4 bánh + cơ cấu nâng (đã có sơ đồ chân trong CubeMX, mục 4.17, chưa có code), node cầu nối UART Pi ↔ STM32 (phải có giữ bán kính cua + covariance cho odom), YDLidar, BNO055, INA169. Nhánh mô phỏng (`battery_sim.py`, `RasPi/README.md`) vẫn ghi INA226.
+4. **Kích thước xe** (track, wheelbase) vẫn là ước lượng, cần đo xe thật. Mô hình FreeCAD (mục 4.16) đổi track còn 270 mm (bánh nằm trong khung), bánh thực Ø68 mm, thân xe cao hơn URDF 5 mm; vị trí lidar đã đưa vào URDF (mục 4.18), còn track, bánh, chiều cao thân, `effective_track` và các tham số Nav2 chưa cập nhật theo. URDF cũng chưa có 4 vít me nâng (CAD: mỗi vít che lidar 2–5.3°) và trụ ốc vẫn ở góc thay vì (±135, ±105) mm. Cần đo GA25-370, gá động cơ và YDLidar thật.
 5. **Node Python trong mô phỏng tốn CPU vì `/clock`:** đã giảm từ 38–75 % xuống 30–48 % mỗi node nhờ bước 3 ms (mục 4.8); vẫn còn vì `/clock` 333 tin/s. Chỉ có trong mô phỏng.
 6. **Dashboard chưa có đăng nhập:** chỉ mở trong LAN / Tailscale.
 7. **Cửa sổ Gazebo crash lúc khởi động** (driver NVIDIA D3D12 của WSL, 1/4 lần chạy): launch tự mở lại (mục 4.15). Có 1 lần xe không rời được trạm sạc vì "vật cản" ngay sau xe, chưa rõ nguyên nhân, chạy lại thì hết.
 8. **Nav2 thỉnh thoảng không khởi động xong:** container nạp node nhưng phản hồi dịch vụ `load_node` cho launch bị timeout, launch chờ mãi (1/10 lần chạy ngày 08/10). Chưa tìm nguyên nhân; khi gặp thì chạy lại.
-9. **Kiva:** lấy kệ đã chui theo chân kệ (lệch ngang ≤ 0.9 cm, mục 4.10) nhưng xe dừng quá tâm kệ 4–6 cm; trả kệ vẫn theo bản đồ. Đã có đơn hàng (mục 4.11), pin và tự sạc (mục 4.12), xử lý sự cố (mục 4.13); chưa phát hiện mất định vị.
+9. **Kiva:** lấy kệ đã chui theo chân kệ (lệch ngang ≤ 0.9 cm, mục 4.10) nhưng xe dừng quá tâm kệ 4–6 cm. Từ mục 4.19 (pallet trên chân đỡ cố định) trả pallet cũng theo 4 trụ, lệch tâm ô 0.2–2.1 cm. Đã có đơn hàng (mục 4.11), pin và tự sạc (mục 4.12), xử lý sự cố (mục 4.13); chưa phát hiện mất định vị.
+10. **PCB (mục 4.17):** chưa đi dây, chưa chạy DRC, chưa đặt được luật thiết kế 1 lớp; file PCB nháp chưa cập nhật theo sơ đồ đã bỏ 13 linh kiện; footprint module chưa ướm với module thật; dòng kẹt trục GA25 chưa đo; kích thước board 120 × 120 mm nhiều khả năng không đủ (Discovery chiếm 66 × 97 mm), mô hình FreeCAD vẫn giữ chỗ 120 × 120 mm và Raspberry Pi 4B.
+11. **PD13 (LED nhịp tim) chưa có trong `.ioc`** nhưng `App/Src/app.c` vẫn đảo chân này; build vẫn qua nhưng chân chưa được cấu hình ngõ ra nên nhiều khả năng LED không nháy (chưa kiểm chứng trên board). Cần bật lại PD13 là GPIO_Output trong CubeMX.
 
 ## 7. Cách ghi tiếp tài liệu này
 Mỗi khi xong một phần việc hoặc sửa xong một sự cố, thêm vào mục tương ứng theo quy ước ở đầu file: mục tiêu, cách làm, sai lầm, nguyên nhân, cách sửa, kết quả có số liệu, bài học. Quy tắc này nằm trong skill `.claude/skills/report-log`.

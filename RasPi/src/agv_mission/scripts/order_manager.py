@@ -2,8 +2,9 @@
 """Quan ly don hang kho kieu Kiva: hang doi don, lay ke -> cho toi tram -> tra ke (dung chung xe that).
 
 Mot don = "dua ke <ke> toi tram <tram>". Xe lam lan luot:
-  toi staging truoc o -> chui gam (shelf_dock, theo chan ke) -> nang -> lui ra -> cho ke toi tram
-  -> CHO NGUOI XAC NHAN da lay hang -> toi staging -> tra ke vao o (slot_dock) -> ha -> lui ra
+  toi staging truoc o -> chui gam (shelf_dock, theo 4 tru chan do) -> nang -> lui ra -> cho pallet toi tram
+  -> CHO NGUOI XAC NHAN da lay hang -> toi staging -> tra pallet vao o (cung shelf_dock: o trong van con
+  4 tru chan do, nhan dien duoc; return_detect:=false de tra theo ban do / slot_dock nhu ke cu) -> ha -> lui ra
   Truoc khi nang / ha: kiem tra xe thang truc o (checked_dock), sai thi lui ra vao lai.
 Het don thi vao tram sac (DockRobot dock charger_<idle_station>) va sac.
 
@@ -109,6 +110,9 @@ class OrderManager(Node):
         self.dock_yaw_tol = math.radians(self.declare_parameter('dock_yaw_tol_deg', 8.0).value)
         self.dock_pos_tol = self.declare_parameter('dock_pos_tol', 0.10).value   # ke cach ke ben canh 0.35 m
         self.dock_attempts = self.declare_parameter('dock_attempts', 3).value
+        # Tra pallet theo 4 tru chan do (nhu luc lay). Theo ban do (false): AMCL lech vai cm + goc lech thi
+        # quy dao chui vao suot tru -> docking bao va cham (905), lui ra vao lai, quay thua TB 420 deg (REPORT.md 4.19)
+        self.return_detect = self.declare_parameter('return_detect', True).value
         # Spin quay thua ~30 deg (vung chet 1.5 rad/s + tre odom + ham, do o lan thu s2): chi quay tai cho khi
         # lech > turn_min, va xin bot spin_coast
         self.spin_coast = math.radians(self.declare_parameter('spin_coast_deg', 30.0).value)
@@ -139,6 +143,11 @@ class OrderManager(Node):
             depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.status_pub = self.create_publisher(String, 'order/status', latched)
         self.lift_pub = self.create_publisher(String, 'lift/command', 10)
+        # Bao payload_manager xe dang o trong chan do pallet (dung footprint xe, khong dung footprint pallet)
+        self.in_slot_pub = self.create_publisher(Bool, 'payload/in_slot', latched)
+        # O dich cho shelf_detector: chon dung chan do cua o nay, khong nham o ben canh (REPORT.md 4.19)
+        self.target_pub = self.create_publisher(PoseStamped, 'shelf_detector/target', QoSProfile(
+            depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         self.create_subscription(String, 'order/command', self.on_command, 10)
         self.create_subscription(String, 'lift/state', lambda m: setattr(self, 'lift_state', m.data), latched)
@@ -535,6 +544,9 @@ class OrderManager(Node):
         g = DockRobot.Goal()
         g.navigate_to_staging_pose = False
         if detect:
+            sl = self.slots[slot]
+            self.target_pub.publish(self.pose(sl['x'], sl['y'], sl['yaw']))
+            time.sleep(0.2)
             g.use_dock_id, g.dock_id = True, f'slot_{slot}'          # shelf_dock: theo chan ke
         else:
             sl = self.slots[slot]
@@ -680,19 +692,35 @@ class OrderManager(Node):
             ('to_station', lambda: self.retry('to_station', lambda: self.go_station(station), nav=True)),
             ('wait_confirm', lambda: self.wait_confirm(o)),
             ('return_staging', lambda: self.retry('return_staging', lambda: self.go_staging(slot), nav=True)),
-            ('return_dock', lambda: self.retry('return_dock', lambda: self.checked_dock(slot, detect=False))),
+            ('return_dock', lambda: self.retry('return_dock',
+                                               lambda: self.checked_dock(slot, detect=self.return_detect))),
             ('lower', lower),
             ('return_undock', lambda: self.retry('return_undock', self.leave_slot)),
         ]
         # Tu buoc nang ke tro di (ca sau khi da ha ke, xe con duoi gam ke) loi nao cung KHONG duoc tra don
         # ve hang doi / chay lai tu dau: thanh su co cho nguoi, lam lai dung buoc (REPORT.md 4.13)
         lift_index = [name for name, _ in steps].index('lift')
+        # Cac buoc xe o trong chan do ma co the dang cho pallet: pallet nam cao hon dinh 4 tru, chi than xe
+        # moi dung tru -> payload_manager dung footprint xe (footprint pallet trum 4 tru -> du bao va cham)
+        in_slot_steps = ('lift', 'undock', 'return_dock', 'lower')
+        try:
+            self.run_steps(o, steps, lift_index, in_slot_steps)
+        finally:
+            self.in_slot_pub.publish(Bool(data=False))
+        with self.lock:
+            dt = time.time() - self.db.execute('SELECT started FROM orders WHERE id=?', (oid,)).fetchone()[0]
+        self.set_order(oid, status='done', finished=time.time())
+        self.say(f'Don #{oid} xong sau {dt:.1f} s')
+
+    def run_steps(self, o, steps, lift_index, in_slot_steps):
+        oid, shelf = o['id'], o['shelf']
         i = 0
         while i < len(steps):
             name, fn = steps[i]
             if name in ('staging', 'dock') and oid in self.cancel_requested:
                 raise OrderError('nguoi dung huy')
             self.set_step(name)
+            self.in_slot_pub.publish(Bool(data=name in in_slot_steps))
             try:
                 try:
                     fn()
@@ -708,10 +736,6 @@ class OrderManager(Node):
                     raise
                 self.wait_ack()
                 self.say(f'Don #{oid}: tiep tuc buoc "{STEP_NAME.get(name, name)}"')
-        with self.lock:
-            dt = time.time() - self.db.execute('SELECT started FROM orders WHERE id=?', (oid,)).fetchone()[0]
-        self.set_order(oid, status='done', finished=time.time())
-        self.say(f'Don #{oid} xong sau {dt:.1f} s')
 
     def next_order(self):
         with self.lock:

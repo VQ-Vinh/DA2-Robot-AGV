@@ -4,9 +4,9 @@
 
 **Xe tự hành chui gầm, nâng kệ hàng, chở tới trạm lấy hàng rồi trả về ô và tự đi sạc.**
 
-ROS 2 Jazzy · Nav2 · Gazebo Harmonic · Raspberry Pi 4 · STM32F4 · FreeRTOS
+ROS 2 Jazzy · Nav2 · Gazebo Harmonic · Raspberry Pi 5 · STM32F4 · FreeRTOS · KiCad · FreeCAD
 
-[Mô phỏng & ROS 2](RasPi/README.md) · [Nhật ký quá trình](REPORT.md) · [Firmware STM32](STM32/)
+[Mô phỏng & ROS 2](RasPi/README.md) · [Nhật ký quá trình](REPORT.md) · [Firmware STM32](STM32/) · [Mô hình cơ khí](CAD/README.md) · [Mạch PCB](PCB/)
 
 </div>
 
@@ -53,7 +53,7 @@ flowchart TB
         WEB["🌐 Web dashboard<br/>điện thoại / laptop"]
     end
 
-    subgraph PI["🍓 Raspberry Pi 4 · ROS 2 Jazzy"]
+    subgraph PI["🍓 Raspberry Pi 5 · ROS 2 Jazzy"]
         DASH["web_dashboard<br/>REST + SSE"]
         OM["order_manager<br/>hàng đợi · SQLite · sự cố"]
         NAV["Nav2<br/>planner · RPP · docking · behaviors"]
@@ -65,12 +65,13 @@ flowchart TB
     subgraph MCU["⚙️ STM32F407 · FreeRTOS"]
         SPD["PID tốc độ + feedforward"]
         ENC["Encoder"]
-        DRV["L298N × 2"]
+        DRV["TB6612FNG × 2"]
+        LIFTD["A4988<br/>cơ cấu nâng"]
     end
 
     LIDAR(["📡 YDLidar"])
     IMU(["🧭 BNO055"])
-    BAT(["🔋 INA226"])
+    BAT(["🔋 INA169"])
     MOT(["4 × GA25-370"])
 
     WEB <-->|HTTP| DASH
@@ -84,6 +85,7 @@ flowchart TB
     IMU --> MCU
     BAT --> MCU
     SPD --> DRV --> MOT
+    LIFTD --> LIFT(["⏫ Động cơ bước nâng kệ"])
     MOT --> ENC --> SPD
 ```
 
@@ -183,9 +185,11 @@ timeline
             : Web dashboard
             : Kiva 1 · nâng kệ · Kiva 2 · tìm chân kệ
             : Kiva 3 · đơn hàng · Kiva 4 · pin & sạc · Kiva 5 · sự cố
-    Tiếp theo : Cầu nối UART Pi ↔ STM32
-              : PCB · khung xe · chốt định vị mặt nâng
-              : Chạy trên xe thật
+            : Mô hình cơ khí FreeCAD
+            : PCB · chốt linh kiện · sơ đồ chân CubeMX · sơ đồ nguyên lý · xếp linh kiện nháp
+    Tiếp theo : PCB · đi dây · DRC · ướm footprint với module thật
+              : Firmware 4 bánh + cơ cấu nâng · cầu nối UART Pi ↔ STM32
+              : Chốt định vị mặt nâng · chạy trên xe thật
 ```
 
 ---
@@ -210,6 +214,7 @@ flowchart LR
     R --> ST["📂 STM32<br/>firmware"]
     R --> RE["📄 REPORT.md<br/>nhật ký"]
     R --> CA["📂 CAD<br/>mô hình FreeCAD"]
+    R --> PC["📂 PCB<br/>board mẹ KiCad"]
     RP --> D["agv_description<br/>URDF"]
     RP --> G["agv_gazebo<br/>world · sim · bài thử"]
     RP --> L["agv_localization<br/>EKF · imu_bias"]

@@ -3,15 +3,22 @@
 
 Doc trang thai co cau nang (/lift/state, /lift/has_load) va:
   1. Loc scan /scan_raw -> /scan: bo diem roi vao than xe (4 tru oc giua 2 tang che lidar), va
-     khi dang cho ke thi bo ca diem trong khung ke (4 chan ke di theo xe, khong phai vat can).
+     khi dang cho thi bo diem trong khung shelf_half (vat di theo xe duoi mat quet lidar). Pallet nam tren
+     chan do co dinh, khong co chan rieng -> shelf_half mac dinh = body_half (khong loc them).
      Giong LaserScanBoxFilter cua laser_filters (diem bi loc = NaN, AMCL / SLAM / costmap bo qua),
-     nhung doi khung loc theo tai nen tu viet.
-  2. Doi footprint cua 2 costmap: xe 0.32 x 0.38 m <-> ke 0.88 (doc) x 0.78 (ngang) m.
+     nhung doi khung loc theo tai nen tu viet. Khung loc tinh theo base_link (tam xe); lidar dat lech
+     tam (CAD: phia truoc 108 mm) nen lay vi tri lidar tu TF base_link -> frame cua scan.
+  2. Doi footprint cua 2 costmap: xe 0.32 x 0.38 m <-> pallet 0.88 (doc) x 0.78 (ngang) m.
+     Ngoai le: khi xe dang o trong chan do (payload/in_slot = true, do order_manager bao luc lui ra sau
+     khi nang va luc chui vao tra pallet) thi van dung footprint xe: pallet bay qua tren 4 tru (day pallet
+     cao hon dinh tru 1.7 cm khi nang), chi than xe moi dung tru. Footprint pallet o day se trum 4 tru
+     -> docking_server du bao va cham (error 905) suot doan 0.8 m ra / vao.
   3. Gioi han toc do Nav2 khi cho ke (/speed_limit).
   4. Khi mat nang da len het ("up"): xoa 2 costmap. Luc mat nang con ha, lidar da danh dau 4 chan
      ke vao costmap; sau khi nang, diem chan ke bi loc (NaN) nen khong tia nao xoa duoc -> "chan ke
      ma" nam trong footprint moi, docking_server bao va cham khi lui ra. Xoa ngay luc bat dau nang
      thi chua du: costmap van giu scan cuoi chua loc va danh dau lai ngay sau khi xoa (REPORT.md).
+     Voi ke co chan (shelf_half lon); pallet tren chan do thi 4 tru la vat that, xoa xong lidar danh dau lai.
 Phat /payload/carrying (Bool, giu tin cuoi) cho cac node khac.
 
 Dang cho = co ke tren mat nang, hoac mat nang khong o vi tri ha (dang nang / ha / da nang).
@@ -24,8 +31,10 @@ from nav2_msgs.msg import SpeedLimit
 from nav2_msgs.srv import ClearEntireCostmap
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
+from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Bool, String
+from tf2_ros import Buffer, TransformException, TransformListener
 
 
 def rect(hx, hy):
@@ -36,11 +45,12 @@ def rect(hx, hy):
 class PayloadManager(Node):
     def __init__(self):
         super().__init__('payload_manager')
-        # Khung tinh trong frame laser (lidar dat giua xe): than xe gom 4 tru oc o +-0.135 m
+        # Khung tinh trong base_link: than xe gom 4 tru oc o +-0.135 m
+        self.base_frame = self.declare_parameter('base_frame', 'base_link').value
         self.body = self.declare_parameter('body_half', [0.17, 0.17]).value
-        # Ke 0.75 m (agv_mission/config/shelves.yaml), chan ngoai cung o 0.375 m. Ke nam lech tren
-        # mat nang toi ~8 cm (AMCL lech khi chui gam) -> 0.375 + 0.1 (0.41 da thu: chan ke lot ra)
-        self.shelf = self.declare_parameter('shelf_half', [0.48, 0.48]).value
+        # Khung loc khi dang cho. Ke cu co 4 chan di theo xe -> [0.48, 0.48] (REPORT.md 4.10). Pallet tren
+        # chan do co dinh khong co gi di theo xe duoi mat quet -> chi loc than xe.
+        self.shelf = self.declare_parameter('shelf_half', list(self.body)).value
         self.robot_fp = self.declare_parameter('robot_footprint_half', [0.16, 0.19]).value
         # Footprint khi cho (nua doc, nua ngang): ke 0.75 m; nhan dien chan ke cho lech ngang <= 1 cm nhung
         # xe dung qua tam ke 4-6 cm theo chieu doc (REPORT.md 4.10) -> doc 0.375 + 0.065, ngang 0.375 + 0.015.
@@ -59,11 +69,16 @@ class PayloadManager(Node):
         self.create_subscription(LaserScan, 'scan_raw', self.on_scan, qos_profile_sensor_data)
         self.create_subscription(String, 'lift/state', self.on_lift_state, latched)
         self.create_subscription(Bool, 'lift/has_load', self.on_load, latched)
+        self.create_subscription(Bool, 'payload/in_slot', self.on_in_slot, latched)
 
         self.lift_state = 'down'
+        self.in_slot = False
         self.has_load = False
         self.carrying = None
         self.cache = None          # (so tia, angle_min, increment) -> (cos, sin)
+        self.laser_xy = None       # vi tri lidar trong base_link (TF tinh, doc 1 lan)
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
         self.update()
         # Costmap co the khoi dong sau node nay: gui lai footprint dinh ky
         self.create_timer(2.0, self.publish_footprint)
@@ -85,6 +100,12 @@ class PayloadManager(Node):
         self.has_load = msg.data
         self.update()
 
+    def on_in_slot(self, msg):
+        if msg.data != self.in_slot:
+            self.in_slot = msg.data
+            self.get_logger().info('trong chan do: footprint xe' if msg.data else 'ra khoi chan do')
+            self.publish_footprint()
+
     def update(self):
         carrying = self.has_load or self.lift_state != 'down'
         if carrying == self.carrying:
@@ -99,22 +120,40 @@ class PayloadManager(Node):
                                else 'khong cho ke: footprint xe, bo gioi han toc do')
 
     def publish_footprint(self):
-        fp = rect(*(self.shelf_fp if self.carrying else self.robot_fp))
+        fp = rect(*(self.shelf_fp if self.carrying and not self.in_slot else self.robot_fp))
         for p in self.fp_pubs:
             p.publish(fp)
 
+    def lookup_laser(self, frame):
+        try:
+            t = self.tf_buffer.lookup_transform(self.base_frame, frame, Time())
+        except TransformException as e:
+            self.get_logger().warn(f'chua co TF {self.base_frame} -> {frame}: {e}', throttle_duration_sec=5.0)
+            return None
+        tr, q = t.transform.translation, t.transform.rotation
+        yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
+        self.get_logger().info(f'lidar trong {self.base_frame}: ({tr.x:.3f}, {tr.y:.3f}) m, '
+                               f'goc {math.degrees(yaw):.1f} deg')
+        return tr.x, tr.y, yaw
+
     def on_scan(self, scan):
+        if self.laser_xy is None:
+            self.laser_xy = self.lookup_laser(scan.header.frame_id)
+            if self.laser_xy is None:
+                return             # chua biet lidar o dau thi chua loc duoc -> khong phat scan chua loc
+        lx, ly, lyaw = self.laser_xy
         n = len(scan.ranges)
         key = (n, scan.angle_min, scan.angle_increment)
         if self.cache is None or self.cache[0] != key:
-            angles = [scan.angle_min + i * scan.angle_increment for i in range(n)]
+            angles = [lyaw + scan.angle_min + i * scan.angle_increment for i in range(n)]
             self.cache = (key, [math.cos(a) for a in angles], [math.sin(a) for a in angles])
         _, cos_a, sin_a = self.cache
         hx, hy = self.shelf if self.carrying else self.body
+        r_max = math.hypot(hx + abs(lx), hy + abs(ly))   # tia dai hon thi chac chan ra ngoai khung loc
         nan = float('nan')
         ranges = list(scan.ranges)
         for i, r in enumerate(ranges):
-            if r < 0.7 and abs(r * cos_a[i]) < hx and abs(r * sin_a[i]) < hy:   # 0.7 = nua duong cheo khung loc (0.68)
+            if r < r_max and abs(lx + r * cos_a[i]) < hx and abs(ly + r * sin_a[i]) < hy:
                 ranges[i] = nan
         scan.ranges = ranges
         self.scan_pub.publish(scan)

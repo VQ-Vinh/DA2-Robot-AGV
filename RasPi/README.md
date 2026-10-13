@@ -189,7 +189,7 @@ Kết quả (lộ trình `drive_route.py`, ~52 m qua mọi lối đi, chấm b�
 | Không vùng chết (`rpm_min:=0`), quay 0.5 rad/s | 98.4 % | 2.8 cm |
 | Có vùng chết (mặc định, quay ≥ 1.5 rad/s) | **99.4 %** | **2.7 cm** |
 
-Bảng trên là của kho cũ. Bản đồ trong repo (`maps/warehouse.pgm/.yaml`) là của **kho kiểu Kiva** (mục dưới), lập lại sau khi hạ lidar xuống 0.12 m: 100 % ô vật cản cách vật thật ≤ 10 cm (91.6 % ≤ 5 cm, trung vị 1.8 cm), thấy đủ 32/32 chân kệ mini. Gốc frame `map` là chỗ xe xuất phát (world x = −4.5, y = 0).
+Bảng trên là của kho cũ. Bản đồ trong repo (`maps/warehouse.pgm/.yaml`) là của **kho kiểu Kiva** (mục dưới), lập lại sau khi hạ lidar xuống 0.12 m: 100 % ô vật cản cách vật thật ≤ 10 cm (91.6 % ≤ 5 cm, trung vị 1.8 cm), thấy đủ 32/32 chân kệ mini. Lập lại ngày 13/10/2026 cho kho pallet (REPORT.md 4.19): thấy đủ 40/40 trụ chân đỡ (cả 2 ô trống), 98.9 % ô vật cản cách vật thật ≤ 5 cm. Gốc frame `map` là chỗ xe xuất phát (world x = −4.5, y = 0).
 
 ## Dẫn đường: Nav2
 
@@ -229,26 +229,32 @@ Dung sai đích của Nav2 là 0.25 m, tính theo vị trí AMCL. Lệch thật 
 
 ## Kho kiểu Kiva: chui gầm, nâng kệ, chở tới trạm
 
-Xe chui vào gầm **kệ mini 4 chân**, nâng kệ lên ~1.7 cm, chở cả kệ tới trạm lấy hàng (mô hình "hàng tới người" của Amazon Kiva), rồi trả kệ về ô.
+Mỗi ô có **chân đỡ 4 trụ cố định**; trên đó là **pallet có thùng hàng** (trong code, lệnh và dashboard vẫn gọi là "kệ" `ke_xx`). Xe chui vào giữa 4 trụ, nâng pallet khỏi chân đỡ ~1.7 cm, chở pallet tới trạm lấy hàng (mô hình "hàng tới người" của Amazon Kiva), rồi đặt lại lên chân đỡ của ô. Trước 13/10/2026 là **kệ mini 4 chân** đi theo xe; các bảng số liệu bên dưới đo với kệ cũ, số liệu pallet ở REPORT.md 4.19.
 
-**Bố trí** (`agv_mission/config/shelves.yaml`, nguồn duy nhất): 10 ô (2 dãy × 5, cách nhau 1.1 m) hai bên lối giữa rộng 2.45 m, 8 kệ, ô N5 và S5 để trống. Kệ 0.75 × 0.75 m, gầm cao 0.18 m, nặng 3 kg (kệ 1 kg + hàng 2 kg). Sửa file này rồi chạy:
+- **Chân đỡ:** 4 trụ 3 × 3 cm cao 0.18 m ở đúng chỗ chân kệ cũ (tâm cách nhau 0.72 m) → bản đồ, `shelf_detector` không đổi. Đỉnh mỗi trụ có tấm đỡ 12 × 12 cm, cao hơn mặt quét lidar: pallet đặt lệch tới ~10 cm vẫn nằm trên 4 tấm (không có tấm đỡ, lệch quá 1.5 cm là một cặp trụ lọt ra ngoài mép pallet).
+- **Pallet 0.75 m:** 3 ván đáy (ván giữa là chỗ mặt nâng đẩy lên, 2 ván đầu rộng 14 cm tựa lên tấm đỡ), 3 thanh đỡ, 5 ván mặt, 5 thùng hàng gắn cứng. 3 kg (pallet 1 + hàng 2).
+- **Ô trống vẫn còn 4 trụ** → **trả pallet cũng chui theo trụ** (`shelf_dock`, `return_detect:=true` mặc định), không theo bản đồ.
+- `order_manager` gửi ô đích lên `shelf_detector/target`: detector chọn chân đỡ gần ô đích nhất, không bám nhầm ô bên cạnh khi xe tới staging còn lệch góc.
+- Khi xe đang ở trong chân đỡ mà có pallet (nâng, lùi ra, chui vào trả, hạ), `order_manager` báo `payload/in_slot` → `payload_manager` giữ footprint thân xe: pallet bay qua trên trụ, chỉ thân xe mới đụng trụ.
+
+**Bố trí** (`agv_mission/config/shelves.yaml`, nguồn duy nhất): 10 ô (2 dãy × 5, cách nhau 1.1 m) hai bên lối giữa rộng 2.45 m, 8 kệ, ô N5 và S5 để trống. Pallet 0.75 × 0.75 m trên chân đỡ cao 0.18 m, nặng 3 kg (pallet 1 kg + hàng 2 kg). Sửa file này rồi chạy:
 ```bash
 python3 agv_gazebo/scripts/make_warehouse.py
 python3 agv_navigation/scripts/make_keepout_mask.py
 ```
 (`make_warehouse.py` ghi world và danh sách dock trong `nav2.yaml`; đổi vị trí ô thì lập lại bản đồ trước khi tạo vùng cấm.)
 
-**Xe:** lidar đặt **giữa 2 tầng** (mặt quét 0.12 m): trên nóc thì bị đáy kệ che khi chui gầm; ở đây lidar thấy cả pallet 15 cm. Tầng 2 có **mặt nâng** (khớp `lift_joint`, hành trình 3 cm, 2 cm/s như vít me) và cảm biến "có kệ".
+**Xe:** lidar đặt **giữa 2 tầng**, phía trước xe 108 mm theo mô hình CAD (mặt quét 0.12 m): trên nóc thì bị đáy kệ che khi chui gầm; ở đây lidar thấy cả pallet 15 cm. Tầng 2 có **mặt nâng** (khớp `lift_joint`, hành trình 3 cm, 2 cm/s như vít me) và cảm biến "có kệ".
 
 | Node | Việc | Xe thật |
 |---|---|---|
 | `lift_sim.py` (agv_gazebo) | `/lift/command` (`up`/`down`) → khớp nâng; phát `/lift/state` (`down`/`moving_up`/`up`/`moving_down`/`error`), `/lift/has_load` | cầu nối STM32 phát đúng các topic này |
-| `shelf_detector.py` (agv_navigation) | `/scan_raw` → `/detected_dock_pose`: tâm kệ gần xe nhất (frame lidar, stamp của scan) | dùng nguyên |
-| `payload_manager.py` (agv_navigation) | `/scan_raw` → `/scan`: bỏ điểm 4 trụ ốc của xe, khi chở thì bỏ cả 4 chân kệ; đổi footprint costmap (xe 0.32 × 0.38 m ↔ kệ 0.84 × 0.84 m); giới hạn 0.35 m/s khi chở; xoá costmap khi mặt nâng lên hết | dùng nguyên |
+| `shelf_detector.py` (agv_navigation) | `/scan_raw` → `/detected_dock_pose`: tâm chân đỡ gần ô đích (`shelf_detector/target`) nhất, không có ô đích thì gần xe nhất (frame lidar, stamp của scan) | dùng nguyên |
+| `payload_manager.py` (agv_navigation) | `/scan_raw` → `/scan`: bỏ điểm 4 trụ ốc của xe (pallet không có gì dưới mặt quét nên khi chở không lọc thêm); đổi footprint costmap (xe 0.32 × 0.38 m ↔ pallet 0.88 × 0.78 m, trừ lúc `payload/in_slot`); giới hạn 0.35 m/s khi chở; xoá costmap khi mặt nâng lên hết | dùng nguyên |
 
 **Chui gầm** dùng `docking_server` của Nav2 (`SimpleNonChargingDock`), mỗi ô là một dock `slot_N1`…`slot_S5`. Xe tới **staging** cách tâm ô 1.0 m, rồi tiến thẳng vào. Hai loại dock:
 - `shelf_dock` (**lấy kệ**): chui theo **kệ thật**. Node `shelf_detector.py` (agv_navigation, dùng chung xe thật) tìm 4 chân kệ trong `/scan_raw` (4 cụm điểm nhỏ tạo hình vuông cạnh 0.72 m), phát tâm kệ lên `/detected_dock_pose`. Kệ trả về mỗi lần lệch vài cm, lâu dần sẽ lệch nhiều; AMCL cũng lệch ~5 cm, nên không tin vị trí ô trên bản đồ.
-- `slot_dock` (**trả kệ** vào ô trống, không có chân nào để nhận diện): theo vị trí ô trên bản đồ. Gửi `DockRobot` với `use_dock_id: false`, `dock_pose` = tâm ô, `dock_type: slot_dock`.
+- `slot_dock`: theo vị trí ô trên bản đồ. Dùng để trả kệ cũ (ô trống không có gì để nhận diện); với pallet chỉ dùng khi `return_detect:=false`. Gửi `DockRobot` với `use_dock_id: false`, `dock_pose` = tâm ô, `dock_type: slot_dock`.
 - Tới staging qua một điểm cách thêm 1.2 m trên cùng trục ô (`NavigateThroughPoses`), để đoạn cuối là đường thẳng: quay tại chỗ với vùng chết thì vọt lố 30–50°.
 - **Kiểm tra tư thế trước khi nâng / hạ** (`checked_dock` trong `order_manager`): docking chỉ kiểm khoảng cách tới tâm ô, không kiểm hướng, nên có lúc báo xong khi xe lệch 22–50°. Lệch hướng > `dock_yaw_tol_deg` (8) hoặc, khi trả kệ, lệch vị trí > `dock_pos_tol` (0.10 m) thì lùi thẳng ra staging vào lại (`dock_attempts` 3). Lệch > `turn_min_deg` (40) thì quay tại chỗ bớt trước (Spin quay thừa ~`spin_coast_deg` 30°, nên lệch nhỏ không chỉnh tại chỗ được).
 - **Mô phỏng khoá kệ vào mặt nâng** khi nâng hết (plugin `DetachableJoint` trong mỗi kệ, `lift_sim` gửi `/shelf/<kệ>/attach|detach` qua `gz topic`), hạ thì mở khoá trước. Xe thật cần **chốt định vị** trên mặt nâng tương ứng. `lift_sim ... -p lock_shelves:=false` để chở chỉ bằng ma sát như trước.
@@ -297,7 +303,7 @@ Một đơn = "đưa kệ X tới trạm lấy hàng Y". Node `order_manager.py`
 
 ```
 tới trước ô (thẳng trục ô) -> chui gầm (shelf_dock, theo chân kệ) -> nâng -> lùi ra -> chở tới trạm
--> CHỜ NGƯỜI XÁC NHẬN đã lấy hàng -> tới trước ô -> trả kệ (slot_dock) -> hạ -> lùi ra -> đơn tiếp / về trạm sạc
+-> CHỜ NGƯỜI XÁC NHẬN đã lấy hàng -> tới trước ô -> trả pallet (shelf_dock, theo 4 trụ) -> hạ -> lùi ra -> đơn tiếp / về trạm sạc
 ```
 
 - **Lệnh** (`/order/command`, hoặc trên dashboard): `add <kệ> <trạm> [ưu tiên]` (ưu tiên lớn làm trước), `cancel <id>` (đơn đang chờ; đơn đang chạy chỉ huỷ được trước khi nâng kệ), `confirm` (người ở trạm đã lấy hàng), `pause` / `resume` (dừng / tiếp nhận đơn mới), `ack` (đã xử lý lỗi).
@@ -368,8 +374,8 @@ agv_cmd.py ──/mission/command──► mission_server ──NavigateToPose�
 
 ## Kích thước xe
 
-Đặt ở đầu `agv_description/urdf/agv.urdf.xacro`: thân 2 tầng mica 30 × 30 cm cách nhau 10 cm, 4 trụ ốc ở góc, linh kiện ở tầng 1, lidar đặt trên khối linh kiện **giữa 2 tầng** (mặt quét cao ~0.12 m), mặt nâng trên tầng 2, bánh 65 mm. Giá trị đánh dấu `(*)` là ước lượng (track 0.34 m, wheelbase 0.20 m, độ dày mica...), cần đo xe thật rồi sửa.
+Đặt ở đầu `agv_description/urdf/agv.urdf.xacro`: thân 2 tầng mica 30 × 30 cm cách nhau 10 cm, 4 trụ ốc ở góc, linh kiện ở tầng 1, lidar **giữa 2 tầng**, phía trước tâm xe 108 mm trên 4 trụ M3 × 25 (lấy từ `CAD/agv.FCStd`; `laser_frame` ở mặt quét, cao 0.1199 m), mặt nâng trên tầng 2, bánh 65 mm. Giá trị đánh dấu `(*)` là ước lượng (track 0.34 m, wheelbase 0.20 m, độ dày mica...), cần đo xe thật rồi sửa.
 
-Lidar quét ở ~0.12 m: thấy pallet 15 cm và chân kệ mini, không thấy vật thấp hơn 12 cm. 4 trụ ốc giữa 2 tầng che lidar vài độ; `payload_manager` lọc bỏ.
+Lidar quét ở ~0.12 m: thấy pallet 15 cm và chân kệ mini, không thấy vật thấp hơn 12 cm. 4 trụ ốc giữa 2 tầng che lidar vài độ; `payload_manager` lọc bỏ. Khung lọc (thân xe, kệ đang chở) và khung bỏ điểm của `shelf_detector` tính quanh `base_link`; vị trí lidar đọc từ TF `base_link → laser_frame`, nên dời lidar chỉ cần sửa URDF.
 
 `effective_track` (0.45 m) là track hiệu dụng cho skid-steer: bánh trượt ngang khi quay nên xe quay ít hơn tính theo `track_width`. Hiệu chỉnh bằng cách cho xe quay tại chỗ rồi đặt `effective_track` mới = `effective_track` hiện tại × `góc_odom / góc_thật`.

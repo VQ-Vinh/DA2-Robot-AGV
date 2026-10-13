@@ -9,7 +9,7 @@ Sua bo tri thi sua yaml roi chay lai file nay (khong sua tay warehouse.sdf).
 
 Kho 12 x 8 m (world x: -6..6, y: -4..4). Frame map = world + (4.5, 0).
   - Ke co dinh sat tuong bac / nam (cao toi san, lidar thay) -> moc cho AMCL
-  - Khu luu ke mini o giua: 2 day o, loi giua rong
+  - Khu luu pallet o giua: 2 day o, moi o co chan do 4 tru co dinh, pallet co thung hang nam tren; loi giua rong
   - Tram sac, tram lay hang, khu nhap hang ben trai; 2 pallet ben phai
 """
 import math
@@ -43,35 +43,60 @@ def static_model(name, x, y, z, size, color, collision=True, yaw=0.0):
             f'    </model>\n')
 
 
-def shelf_model(name, x, y, cfg):
-    """Ke mini 4 chan, mot link. Xe nang ke: lift_sim khoa ke vao mat nang (khop co dinh DetachableJoint,
-    giong chot dinh vi tren mat nang xe that), ha ke thi mo khoa. Chi nho ma sat thi ke truot toi 10 cm /
-    11 deg khi xe quay tai cho, chan ke lot ra ngoai vung loc scan thanh "vat can" sat xe (REPORT.md 4.14).
-    Plugin noi khop ngay khi thay model agv: lift_sim mo khoa het luc khoi dong."""
-    s, leg, h0, top = cfg['size'], cfg['leg'], cfg['clearance'], cfg['height']
-    m = cfg['mass'] + cfg['goods_mass']
+def stand_model(name, x, y, yaw, cfg):
+    """Chan do pallet co dinh tai o: 4 tru vuong o 4 goc (lidar 0.12 m thay), dinh moi tru co tam do
+    vuong pad x pad, mep ngoai trung mep pallet. Tam tru cach nhau 0.72 m ma pallet chi 0.75 m: khong co
+    tam do thi pallet dat lech qua 1.5 cm la mot cap tru lot ra ngoai mep, pallet chui xuong mat nang.
+    Tam do cao hon mat quet lidar -> lidar / ban do / shelf_detector chi thay tru nhu cu. Mep trong tam do
+    cach tam o s/2 - pad = 0.255 m, than xe chi rong 0.19 m moi ben -> xe chui qua khong cham.
+    O trong van con 4 tru -> moc de nhan dien o khi tra hang; khong di theo pallet."""
+    s, leg, h0, pad, pt = cfg['size'], cfg['leg'], cfg['clearance'], cfg['stand_pad'], 0.012
     off = s / 2 - leg / 2
-    wood, metal, goods = '0.55 0.4 0.25', '0.3 0.3 0.35', '0.8 0.6 0.3'
+    poff = s / 2 - pad / 2
     parts = []
     for i, (sx, sy) in enumerate([(1, 1), (1, -1), (-1, 1), (-1, -1)]):
-        # chan duoi gam (lidar thay) va cot len tren
-        parts.append(box(f'leg{i}', f'{sx * off} {sy * off} {h0 / 2} 0 0 0', f'{leg} {leg} {h0}', metal))
-        post = top - h0 - 0.02
-        parts.append(box(f'post{i}', f'{sx * off} {sy * off} {h0 + 0.02 + post / 2} 0 0 0',
-                         f'{leg} {leg} {post}', metal))
-    # san duoi: mat nang cua xe day vao day (collision "deck_bottom")
-    parts.append(box('deck_bottom', f'0 0 {h0 + 0.01} 0 0 0', f'{s} {s} 0.02', wood))
-    parts.append(box('deck_mid', f'0 0 {(h0 + top) / 2} 0 0 0', f'{s} {s} 0.015', wood))
-    parts.append(box('deck_top', f'0 0 {top - 0.0075} 0 0 0', f'{s} {s} 0.015', wood))
-    # 2 thung hang (khoi luong nam trong inertial cua ca ke)
-    parts.append(box('goods1', f'0 0 {h0 + 0.02 + 0.075} 0 0 0', '0.3 0.3 0.15', goods))
-    parts.append(box('goods2', f'0.05 -0.05 {(h0 + top) / 2 + 0.0075 + 0.06} 0 0 0', '0.25 0.2 0.12', goods))
-    zc = h0 + 0.15    # trong tam (hang nam thap)
-    ixx = m * (s * s + top * top) / 12
+        parts.append(box(f'post{i}', f'{sx * off} {sy * off} {(h0 - pt) / 2} 0 0 0', f'{leg} {leg} {h0 - pt}',
+                         '0.3 0.3 0.35'))
+        parts.append(box(f'pad{i}', f'{sx * poff} {sy * poff} {h0 - pt / 2} 0 0 0', f'{pad} {pad} {pt}',
+                         '0.3 0.3 0.35'))
+    return (f'    <model name="{name}"><static>true</static><pose>{x} {y} 0 0 0 {yaw}</pose>\n'
+            f'      <link name="link">{"".join(parts)}</link>\n'
+            f'    </model>\n')
+
+
+def pallet_model(name, x, y, yaw, cfg):
+    """Pallet go co thung hang gan cung, nam tren chan do (khong co chan rieng). Tu duoi len: 3 van day
+    (truoc, giua, sau theo huong xe vao; van giua la cho mat nang day len, 2 van dau tua len tam do), 3 thanh do doc, 5 van mat,
+    roi 4 thung 2 x 2 + 1 thung chong len. Xe nang pallet: lift_sim khoa pallet vao mat nang (khop co dinh
+    DetachableJoint, giong chot dinh vi tren mat nang xe that), ha thi mo khoa. Plugin noi khop ngay khi
+    thay model agv: lift_sim mo khoa het luc khoi dong."""
+    s, h0, ph = cfg['size'], cfg['clearance'], cfg['pallet_height']
+    m = cfg['mass'] + cfg['goods_mass']
+    board, stringer = 0.02, ph - 0.04
+    wood, goods = '0.62 0.48 0.3', '0.72 0.55 0.35'
+    parts = []
+    # x = huong xe vao (truc o), y = ngang
+    # van day 2 dau rong 0.14 m: tua len tam do cua chan do ca khi dat lech ~10 cm
+    for i, (bx, bw) in enumerate(((-(s - 0.14) / 2, 0.14), (0.0, 0.1), ((s - 0.14) / 2, 0.14))):
+        parts.append(box(f'bottom{i}', f'{bx} 0 {h0 + board / 2} 0 0 0', f'{bw} {s} {board}', wood))
+    for i, sy in enumerate((-(s - 0.08) / 2, 0.0, (s - 0.08) / 2)):
+        parts.append(box(f'stringer{i}', f'0 {sy} {h0 + board + stringer / 2} 0 0 0', f'{s} 0.08 {stringer}', wood))
+    top_z = h0 + board + stringer
+    for i in range(5):
+        bx = -s / 2 + 0.065 + i * (s - 0.13) / 4
+        parts.append(box(f'top{i}', f'{bx} 0 {top_z + board / 2} 0 0 0', f'0.13 {s} {board}', wood))
+    deck = top_z + board
+    g, gh = 0.32, 0.2
+    for i, (gx, gy) in enumerate([(1, 1), (1, -1), (-1, 1), (-1, -1)]):
+        parts.append(box(f'goods{i}', f'{gx * 0.17} {gy * 0.17} {deck + gh / 2} 0 0 0', f'{g} {g} {gh}', goods))
+    parts.append(box('goods4', f'0 0 {deck + gh + 0.09} 0 0 0', '0.3 0.26 0.18', goods))
+    top = deck + gh + 0.18
+    zc = (h0 + top) / 2
+    ixx = m * (s * s + (top - h0) ** 2) / 12
     izz = m * (2 * s * s) / 12
-    return (f'    <model name="{name}"><pose>{x} {y} 0 0 0 0</pose>\n'
+    return (f'    <model name="{name}"><pose>{x} {y} 0.001 0 0 {yaw}</pose>\n'
             f'      <link name="link">\n'
-            f'        <inertial><pose>0 0 {zc} 0 0 0</pose><mass>{m}</mass>'
+            f'        <inertial><pose>0 0 {zc:.3f} 0 0 0</pose><mass>{m}</mass>'
             f'<inertia><ixx>{ixx:.4f}</ixx><iyy>{ixx:.4f}</iyy><izz>{izz:.4f}</izz>'
             f'<ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>\n'
             f'        {"".join(parts)}\n'
@@ -149,11 +174,14 @@ def main():
                                 f'{cfg["size"] + 0.08} {cfg["size"] + 0.08} 0.001', '0.85 0.85 0.3',
                                 collision=False))
 
-    out.append(f'    <!-- Ke mini {cfg["size"]} m, gam {cfg["clearance"]} m, '
-               f'{cfg["mass"] + cfg["goods_mass"]} kg (ke + hang) -->\n')
+    out.append(f'    <!-- Chan do pallet co dinh o moi o: 4 tru {cfg["leg"]} m, cao {cfg["clearance"]} m -->\n')
+    for name, sl in slots.items():
+        out.append(stand_model(f'stand_{name}', sl['x'] - MAP_X, sl['y'] - MAP_Y, sl['yaw'], cfg))
+    out.append(f'    <!-- Pallet {cfg["size"]} m co thung hang, day pallet o {cfg["clearance"]} m, '
+               f'{cfg["mass"] + cfg["goods_mass"]} kg (pallet + hang) -->\n')
     for shelf, slot in layout['shelves'].items():
         sl = slots[slot]
-        out.append(shelf_model(shelf, sl['x'] - MAP_X, sl['y'] - MAP_Y, cfg))
+        out.append(pallet_model(shelf, sl['x'] - MAP_X, sl['y'] - MAP_Y, sl['yaw'], cfg))
     out.append('  </world>\n</sdf>\n')
     with open(WORLD, 'w', newline='\n') as f:
         f.write(''.join(out))
@@ -172,7 +200,7 @@ def main():
     i, j = text.index(begin) + len(begin), text.index(end)
     with open(NAV2, 'w', encoding='utf-8', newline='\n') as f:
         f.write(text[:i] + ''.join(block) + text[j:])
-    print(f'world: {len(layout["shelves"])} ke, {len(slots)} o; nav2.yaml: {len(names)} dock')
+    print(f'world: {len(layout["shelves"])} pallet, {len(slots)} o; nav2.yaml: {len(names)} dock')
 
 
 if __name__ == '__main__':

@@ -23,10 +23,22 @@ MARGIN = 0.05   # m, noi rong moi canh
 
 
 def zones():
-    """(tam x, tam y, dai x, rong y) frame map: moi o ke = ke + 4 cm moi ben (vach son tren san)."""
+    """(tam x, tam y, dai x, rong y) frame map: moi o ke = ke + 4 cm moi ben (vach son tren san), va hanh lang
+    sau moi day o (tu mep o toi |y| = back_keepout_y): qua hep cho xe cho pallet quay (REPORT.md 4.19)."""
     lay = yaml.safe_load(open(SHELVES))
     size = lay['shelf']['size'] + 0.08
-    return [(sl['x'], sl['y'], size, size) for sl in lay['slots'].values()]
+    out = [(sl['x'], sl['y'], size, size) for sl in lay['slots'].values()]
+    back = lay['shelf'].get('back_keepout_y')
+    if back:
+        for side in (1, -1):
+            row = [sl for sl in lay['slots'].values() if sl['y'] * side > 0]
+            if not row:
+                continue
+            x0 = min(sl['x'] for sl in row) - size / 2
+            x1 = max(sl['x'] for sl in row) + size / 2
+            y0 = min(abs(sl['y']) for sl in row) + size / 2
+            out.append(((x0 + x1) / 2, side * (y0 + back) / 2, x1 - x0, back - y0))
+    return out
 
 
 def main():
