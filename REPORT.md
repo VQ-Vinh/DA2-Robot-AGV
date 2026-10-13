@@ -73,6 +73,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 09–10/10/2026 | Mạch PCB: chốt linh kiện, sơ đồ chân STM32 cho 4 bánh + nâng, sơ đồ nguyên lý KiCad theo khối, rà soát linh kiện thừa, bản xếp PCB nháp | #21 |
 | 13/10/2026 | Cập nhật tiến độ: README (phần cứng đã chốt, mốc thời gian, thư mục PCB), danh sách vấn đề còn mở | — |
 | 13/10/2026 | Dời lidar trong URDF theo CAD; sửa bộ lọc scan và `shelf_detector` tính theo `base_link`; chạy lại test mô phỏng | — |
+| 13/10/2026 | Kho pallet: chân đỡ 4 trụ cố định + pallet có thùng hàng; lập lại bản đồ; trả pallet theo trụ, detector chọn theo ô đích | — |
 
 ---
 
@@ -688,6 +689,35 @@ Các sự cố gặp phải, theo thứ tự:
   Kệ lệch tâm sau khi trả với C cao hơn A khoảng 1 cm trung bình, lệch hướng max 3.9° so với 2.0°. Mỗi bên mới chạy 1 lần nên chưa phân biệt được do lidar dời hay do dao động giữa các lần chạy. Cột "kệ trượt trên xe khi chờ" của `motion_test` báo 3–25 cm ở **cả A và C**, nên có vẻ do cách đo (đọc vị trí kệ bằng lệnh gz khi kệ đang khoá) chứ không phải do việc dời lidar; chưa kiểm chứng.
 - **Bài học:** tham số hình học viết cứng theo một giả định ("lidar ở tâm") sẽ hỏng âm thầm khi phần cứng đổi; lấy vị trí cảm biến từ TF/URDF để chỉ còn một chỗ phải sửa.
 
+### 4.19. Dựng lại kho: pallet có thùng hàng trên chân đỡ 4 trụ cố định
+
+- **Mục tiêu (theo yêu cầu):** thay kệ mini 4 chân bằng pallet có thùng hàng, kê trên 4 trụ ở góc. Đã chốt với người làm đồ án: trụ **cố định tại ô** (xe nhấc pallet khỏi trụ, chỉ chở pallet), pallet giữ cỡ 0.75 m để không đổi bố trí ô, thùng hàng gắn cứng vào pallet. File CAD pallet ở `CAD/parts/` không lên git (`.gitignore`) nên pallet được dựng theo kiểu phổ biến (3 ván đáy, 3 thanh đỡ, 5 ván mặt), chưa theo file CAD.
+- **Cách làm:** `make_warehouse.py` sinh 10 chân đỡ tĩnh (4 trụ 3 × 3 cm, cao 0.18 m, đúng chỗ chân kệ cũ) và 8 pallet động có plugin `DetachableJoint` như kệ cũ. Bản đồ lập lại bằng SLAM theo `drive_route.py`: thấy 40/40 trụ (bản cũ 32/40, 2 ô trống N5/S5 không có chân), 98.9 % ô vật cản cách vật thật ≤ 5 cm. Mặt nạ vùng cấm sinh lại.
+- **Sự cố và cách sửa** (mỗi dòng là một lần chạy thử trên container, ghi theo thứ tự gặp):
+
+| # | Sự cố | Nguyên nhân (tìm bằng cách nào) | Cách sửa |
+|---|---|---|---|
+| 1 | Chạy thử đầu tiên: xe không rời được trạm sạc, log đầy "Detected jump back in time" | Mô phỏng SLAM chạy trước đó chưa tắt, 2 Gazebo cùng phát `/clock` (lỗi của người chạy test, không phải của world) | Tắt hết rồi chạy lại |
+| 2 | Lùi ra sau khi nâng pallet có thể báo va chạm | Đọc `controller.cpp` của `opennav_docking` (Jazzy): docking kiểm va chạm theo footprint, chỉ bỏ qua 0.45 m cuối. Footprint pallet (0.88 × 0.78 m) trùm 4 trụ suốt 0.8 m đầu, dù pallet thật bay qua trên trụ | `order_manager` báo `payload/in_slot` ở các bước nâng, lùi ra, trả, hạ; `payload_manager` giữ footprint thân xe lúc đó. Bỏ khung lọc "chân kệ đi theo xe" (pallet không có gì dưới mặt quét) |
+| 3 | `order_test`: "hạ kệ thất bại: state down, has_load True" sau khi trả pallet lệch 5.3 cm | Tính lại hình học: tâm trụ cách nhau 0.72 m, pallet 0.75 m → lệch quá 1.5 cm là một cặp trụ lọt ra ngoài mép, pallet chúi xuống mặt nâng | Mỗi trụ có tấm đỡ 12 × 12 cm cao hơn mặt quét lidar (lidar và bản đồ không đổi); 2 ván đáy đầu pallet rộng 14 cm. Pallet đặt lệch tới ~10 cm vẫn nằm trên 4 tấm |
+| 4 | `motion_test` 8/8 nhưng bước trả pallet TB 13.9 s, quay thừa TB 420° (lớn nhất 1799°), 17 lần docking báo va chạm (905); pallet trả lệch 1.0–9.9 cm | Trả vẫn theo bản đồ (`slot_dock`); ô giờ có trụ nên AMCL lệch vài cm + góc lệch là quỹ đạo sượt trụ, xe lùi ra vào lại | Ô trống còn 4 trụ → trả cũng chui theo trụ (`shelf_dock`, tham số `return_detect`) |
+| 5 | Sau sửa 4: pallet trả chuẩn (lệch 0.3–1.7 cm) nhưng bước trả vẫn TB 14.7 s, quay thừa 496°, 16 lần 905 | Đọc log từng đơn: lúc bắt đầu trả, `shelf_detector` báo tâm (1.20, 1.44) m, tức chân đỡ ô bên cạnh. Thử riêng: đặt xe đúng staging ô N5 thì detector thấy đúng (0.89, 0.00) m → lỗi chỉ khi xe tới staging còn lệch 30–40° (vùng chết), "gần xe nhất" là ô bên cạnh | `order_manager` gửi ô đích lên `shelf_detector/target`; detector chọn chân đỡ gần ô đích nhất, bỏ hình vuông cách ô đích > 0.35 m |
+
+- **Kết quả `motion_test` (8 đơn, cùng máy):**
+
+| | Kệ mini (4.18, C) | Pallet, trả theo bản đồ (sự cố 4) | Pallet, trả theo trụ + ô đích (sau sửa 5) |
+|---|---|---|---|
+| Đơn xong | 8/8 | 8/8 | 8/8 |
+| Bước trả: thời gian TB / quay thừa TB (max) | 6.3 s / 21° (76°) | 13.9 s / 420° (1799°) | **5.6 s / 16° (64°)** |
+| Docking báo va chạm (905) | 0 | 17 | **0** |
+| Pallet / kệ sau đơn lệch tâm ô | 2.1–7.3 cm | 1.0–9.9 cm | **0.2–2.1 cm** |
+| Xoay sau đơn | 0.1–4.6° | 0.2–2.6° | 0.2–2.9° |
+
+  Xe khi trả xong vẫn dừng quá tâm ô 3.7–4.5 cm theo chiều dọc (giống mục 4.10, do vùng chết), lệch ngang ≤ 0.5 cm. Bước staging vẫn quay thừa TB ~320° (có từ trước, mục 4.14).
+- **Bài thử khác (sau sửa 5):** `battery_test` 3/3 đơn, có giữ sạc và sạc giữa các đơn. `fault_test` **0/3**: tường chắn lần này thành sự cố đúng như mong đợi, nhưng sau khi gỡ tường và bấm "đã xử lý" xe vẫn không đi được (Nav2 hồi phục liên tục, BackUp báo "Collision Ahead"), nên tình huống dừng khẩn và rơi kệ không chạy tới. Đang tìm nguyên nhân.
+- **Còn mở:** dáng pallet chưa theo file CAD; chiều cao chân đỡ 0.18 m theo URDF cũ, theo mô hình CAD xe (mục 4.16) thì mặt nâng khi hạ ở 173.5 mm, khe chỉ còn 6.5 mm; lấy hàng giờ bám theo chân đỡ chứ không theo pallet, nên pallet lệch trên chân đỡ (≤ 2 cm sau khi sửa) sẽ nằm lệch chừng đó trên mặt nâng. Cột "kệ trượt trên xe khi chờ" của `motion_test` vẫn báo 3–26 cm như ở 4.18 (nghi do cách đo, chưa kiểm chứng).
+- **Bài học:** đổi vật trong world thì xét lại mọi giả định hình học dựa trên vật cũ: footprint khi chở, dung sai đặt hàng, tiêu chí chọn mục tiêu của bộ nhận diện. Mỗi giả định hỏng một kiểu khác nhau, chỉ lộ ra khi chạy đủ chu trình.
+
 ---
 
 ## 5. Tổng hợp sai lầm và bài học
@@ -725,6 +755,8 @@ Các sự cố gặp phải, theo thứ tự:
 | Định vị | Chỉnh covariance / ngưỡng AMCL để chữa trôi do bias con quay | Đo vận tốc quay của EKF trước; sửa tận gốc: ước lượng bias khi bánh đứng yên |
 | Mô phỏng | Gửi lệnh gz một lần rồi coi như xong | Đọc trạng thái thật và gửi lại tới khi khớp |
 | Mô phỏng | Viết cứng khung lọc scan theo gốc lidar (giả định lidar ở tâm xe) | Lấy vị trí cảm biến từ TF; đổi phần cứng chỉ sửa URDF |
+| Kiva | Detector chọn hình vuông "gần xe nhất" | Cho bộ nhận diện biết mục tiêu dự kiến, loại ứng viên xa mục tiêu |
+| Mô phỏng | Đặt trụ chân đỡ đúng góc pallet (dung sai 1.5 cm) | Tính dung sai đặt hàng theo sai số đã đo (4–10 cm) trước khi chốt hình học |
 
 ## 6. Vấn đề còn mở
 Đã giải quyết (xem 4.6): AMCL lệch ở khu phía đông; "collision ahead" trong lối hẹp (từ 24 lần một chặng xuống 0–4 lần một nhiệm vụ).
@@ -737,7 +769,7 @@ Các sự cố gặp phải, theo thứ tự:
 6. **Dashboard chưa có đăng nhập:** chỉ mở trong LAN / Tailscale.
 7. **Cửa sổ Gazebo crash lúc khởi động** (driver NVIDIA D3D12 của WSL, 1/4 lần chạy): launch tự mở lại (mục 4.15). Có 1 lần xe không rời được trạm sạc vì "vật cản" ngay sau xe, chưa rõ nguyên nhân, chạy lại thì hết.
 8. **Nav2 thỉnh thoảng không khởi động xong:** container nạp node nhưng phản hồi dịch vụ `load_node` cho launch bị timeout, launch chờ mãi (1/10 lần chạy ngày 08/10). Chưa tìm nguyên nhân; khi gặp thì chạy lại.
-9. **Kiva:** lấy kệ đã chui theo chân kệ (lệch ngang ≤ 0.9 cm, mục 4.10) nhưng xe dừng quá tâm kệ 4–6 cm; trả kệ vẫn theo bản đồ. Đã có đơn hàng (mục 4.11), pin và tự sạc (mục 4.12), xử lý sự cố (mục 4.13); chưa phát hiện mất định vị.
+9. **Kiva:** lấy kệ đã chui theo chân kệ (lệch ngang ≤ 0.9 cm, mục 4.10) nhưng xe dừng quá tâm kệ 4–6 cm. Từ mục 4.19 (pallet trên chân đỡ cố định) trả pallet cũng theo 4 trụ, lệch tâm ô 0.2–2.1 cm. Đã có đơn hàng (mục 4.11), pin và tự sạc (mục 4.12), xử lý sự cố (mục 4.13); chưa phát hiện mất định vị.
 10. **PCB (mục 4.17):** chưa đi dây, chưa chạy DRC, chưa đặt được luật thiết kế 1 lớp; file PCB nháp chưa cập nhật theo sơ đồ đã bỏ 13 linh kiện; footprint module chưa ướm với module thật; dòng kẹt trục GA25 chưa đo; kích thước board 120 × 120 mm nhiều khả năng không đủ (Discovery chiếm 66 × 97 mm), mô hình FreeCAD vẫn giữ chỗ 120 × 120 mm và Raspberry Pi 4B.
 11. **PD13 (LED nhịp tim) chưa có trong `.ioc`** nhưng `App/Src/app.c` vẫn đảo chân này; build vẫn qua nhưng chân chưa được cấu hình ngõ ra nên nhiều khả năng LED không nháy (chưa kiểm chứng trên board). Cần bật lại PD13 là GPIO_Output trong CubeMX.
 
