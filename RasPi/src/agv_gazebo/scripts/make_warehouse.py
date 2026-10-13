@@ -44,12 +44,21 @@ def static_model(name, x, y, z, size, color, collision=True, yaw=0.0):
 
 
 def stand_model(name, x, y, yaw, cfg):
-    """Chan do pallet co dinh tai o: 4 tru vuong o 4 goc, cao toi mat duoi pallet (lidar 0.12 m thay).
+    """Chan do pallet co dinh tai o: 4 tru vuong o 4 goc (lidar 0.12 m thay), dinh moi tru co tam do
+    vuong pad x pad, mep ngoai trung mep pallet. Tam tru cach nhau 0.72 m ma pallet chi 0.75 m: khong co
+    tam do thi pallet dat lech qua 1.5 cm la mot cap tru lot ra ngoai mep, pallet chui xuong mat nang.
+    Tam do cao hon mat quet lidar -> lidar / ban do / shelf_detector chi thay tru nhu cu. Mep trong tam do
+    cach tam o s/2 - pad = 0.255 m, than xe chi rong 0.19 m moi ben -> xe chui qua khong cham.
     O trong van con 4 tru -> moc de nhan dien o khi tra hang; khong di theo pallet."""
-    s, leg, h0 = cfg['size'], cfg['leg'], cfg['clearance']
+    s, leg, h0, pad, pt = cfg['size'], cfg['leg'], cfg['clearance'], cfg['stand_pad'], 0.012
     off = s / 2 - leg / 2
-    parts = [box(f'post{i}', f'{sx * off} {sy * off} {h0 / 2} 0 0 0', f'{leg} {leg} {h0}', '0.3 0.3 0.35')
-             for i, (sx, sy) in enumerate([(1, 1), (1, -1), (-1, 1), (-1, -1)])]
+    poff = s / 2 - pad / 2
+    parts = []
+    for i, (sx, sy) in enumerate([(1, 1), (1, -1), (-1, 1), (-1, -1)]):
+        parts.append(box(f'post{i}', f'{sx * off} {sy * off} {(h0 - pt) / 2} 0 0 0', f'{leg} {leg} {h0 - pt}',
+                         '0.3 0.3 0.35'))
+        parts.append(box(f'pad{i}', f'{sx * poff} {sy * poff} {h0 - pt / 2} 0 0 0', f'{pad} {pad} {pt}',
+                         '0.3 0.3 0.35'))
     return (f'    <model name="{name}"><static>true</static><pose>{x} {y} 0 0 0 {yaw}</pose>\n'
             f'      <link name="link">{"".join(parts)}</link>\n'
             f'    </model>\n')
@@ -57,7 +66,7 @@ def stand_model(name, x, y, yaw, cfg):
 
 def pallet_model(name, x, y, yaw, cfg):
     """Pallet go co thung hang gan cung, nam tren chan do (khong co chan rieng). Tu duoi len: 3 van day
-    (truoc, giua, sau theo huong xe vao; van giua la cho mat nang day len), 3 thanh do doc, 5 van mat,
+    (truoc, giua, sau theo huong xe vao; van giua la cho mat nang day len, 2 van dau tua len tam do), 3 thanh do doc, 5 van mat,
     roi 4 thung 2 x 2 + 1 thung chong len. Xe nang pallet: lift_sim khoa pallet vao mat nang (khop co dinh
     DetachableJoint, giong chot dinh vi tren mat nang xe that), ha thi mo khoa. Plugin noi khop ngay khi
     thay model agv: lift_sim mo khoa het luc khoi dong."""
@@ -67,8 +76,9 @@ def pallet_model(name, x, y, yaw, cfg):
     wood, goods = '0.62 0.48 0.3', '0.72 0.55 0.35'
     parts = []
     # x = huong xe vao (truc o), y = ngang
-    for i, bx in enumerate((-(s - 0.1) / 2, 0.0, (s - 0.1) / 2)):
-        parts.append(box(f'bottom{i}', f'{bx} 0 {h0 + board / 2} 0 0 0', f'0.1 {s} {board}', wood))
+    # van day 2 dau rong 0.14 m: tua len tam do cua chan do ca khi dat lech ~10 cm
+    for i, (bx, bw) in enumerate(((-(s - 0.14) / 2, 0.14), (0.0, 0.1), ((s - 0.14) / 2, 0.14))):
+        parts.append(box(f'bottom{i}', f'{bx} 0 {h0 + board / 2} 0 0 0', f'{bw} {s} {board}', wood))
     for i, sy in enumerate((-(s - 0.08) / 2, 0.0, (s - 0.08) / 2)):
         parts.append(box(f'stringer{i}', f'0 {sy} {h0 + board + stringer / 2} 0 0 0', f'{s} 0.08 {stringer}', wood))
     top_z = h0 + board + stringer
