@@ -18,11 +18,11 @@ buoc 3 la firmware:
      len 100 RPM -> xe di thang, mat lai -> troi vao ke trong loi hep.
   2. Banh nao vuot rpm_max thi thu nho CA HAI ben cung ti le (cung giu ban kinh cua).
   3. Firmware: banh nao con khac 0 ma duoi rpm_min thi day len rpm_min.
-     Vi du khi tat buoc 1: Nav2 xin 0.1 m/s -> 29 RPM -> 100 RPM -> xe chay 0.34 m/s.
+     Vi du khi tat buoc 1: Nav2 xin 0.1 m/s -> 28 RPM -> 100 RPM -> xe chay 0.36 m/s.
 
 Tham so (mac dinh khop xe that va firmware hien tai):
-  wheel_radius  0.0325  m
-  track         0.45    m, track hieu dung (effective_track trong URDF)
+  wheel_radius  0.034   m (banh "65 mm" co duong kinh ngoai thuc 68 mm)
+  track         0.383   m, track hieu dung (effective_track trong URDF)
   rpm_min       100     dat 0 de tat vung chet, xem xe chay "ly tuong" ra sao
   rpm_max       270
   preserve_turning_radius  true   false = chi co gioi han cua firmware (buoc 2-3)
@@ -38,8 +38,8 @@ class MotorModel(Node):
 
     def __init__(self):
         super().__init__('motor_model')
-        self.r = self.declare_parameter('wheel_radius', 0.0325).value
-        self.track = self.declare_parameter('track', 0.45).value
+        self.r = self.declare_parameter('wheel_radius', 0.034).value
+        self.track = self.declare_parameter('track', 0.383).value
         self.rpm_min = self.declare_parameter('rpm_min', 100.0).value
         self.rpm_max = self.declare_parameter('rpm_max', 270.0).value
         self.preserve_radius = self.declare_parameter('preserve_turning_radius', True).value

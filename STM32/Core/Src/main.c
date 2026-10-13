@@ -19,7 +19,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
-#include "adc.h"
 #include "dma.h"
 #include "i2c.h"
 #include "tim.h"
@@ -97,12 +96,12 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM3_Init();
   MX_USART2_UART_Init();
-  MX_ADC1_Init();
   MX_I2C3_Init();
   MX_TIM2_Init();
   MX_TIM4_Init();
   MX_TIM8_Init();
   MX_TIM9_Init();
+  MX_TIM12_Init();
   /* USER CODE BEGIN 2 */
   App_Init();
   /* USER CODE END 2 */

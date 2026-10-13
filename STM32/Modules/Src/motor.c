@@ -1,18 +1,18 @@
 /**
   * @file    motor.c
-  * @brief   Driver L298N cho 1 dong co DC
+  * @brief   Driver TB6612FNG cho 1 dong co DC (dong co 1, kenh A cua U4)
   */
 #include "motor.h"
 #include "tim.h"
 #include "gpio.h"
 
 /* Doi chan / them motor thu 2 chi can sua o day */
-#define MOTOR_PWM_TIM      htim1
+#define MOTOR_PWM_TIM      htim12
 #define MOTOR_PWM_CH       TIM_CHANNEL_1
-#define MOTOR_IN1_PORT     GPIOE
-#define MOTOR_IN1_PIN      GPIO_PIN_7
-#define MOTOR_IN2_PORT     GPIOE
-#define MOTOR_IN2_PIN      GPIO_PIN_8
+#define MOTOR_IN1_PORT     M1_IN1_GPIO_Port
+#define MOTOR_IN1_PIN      M1_IN1_Pin
+#define MOTOR_IN2_PORT     M1_IN2_GPIO_Port
+#define MOTOR_IN2_PIN      M1_IN2_Pin
 
 static int16_t motor_duty = 0;
 
@@ -31,8 +31,9 @@ void Motor_Init(void)
 {
   motor_set_dir(GPIO_PIN_RESET, GPIO_PIN_RESET);
   motor_set_pwm(0);
-  /* TIM1 la advanced timer: HAL_TIM_PWM_Start tu bat MOE */
   HAL_TIM_PWM_Start(&MOTOR_PWM_TIM, MOTOR_PWM_CH);
+  /* TB6612FNG chi lai dong co khi STBY = High (chan nay chung cho ca 2 module) */
+  HAL_GPIO_WritePin(MOTOR_STBY_GPIO_Port, MOTOR_STBY_Pin, GPIO_PIN_SET);
   motor_duty = 0;
 }
 
@@ -80,9 +81,9 @@ int16_t Motor_GetSpeed(void)
 
 uint32_t Motor_GetPwmFreqHz(void)
 {
-  /* TIM1 nam tren APB2: khi APB2 prescaler != 1 thi timer clock = PCLK2 * 2 */
-  uint32_t pclk2   = HAL_RCC_GetPCLK2Freq();
-  uint32_t tim_clk = ((RCC->CFGR & RCC_CFGR_PPRE2) == 0U) ? pclk2 : pclk2 * 2U;
+  /* TIM12 nam tren APB1: khi APB1 prescaler != 1 thi timer clock = PCLK1 * 2 */
+  uint32_t pclk1   = HAL_RCC_GetPCLK1Freq();
+  uint32_t tim_clk = ((RCC->CFGR & RCC_CFGR_PPRE1) == 0U) ? pclk1 : pclk1 * 2U;
   uint32_t psc     = MOTOR_PWM_TIM.Instance->PSC + 1U;
   uint32_t arr     = MOTOR_PWM_TIM.Instance->ARR + 1U;
 

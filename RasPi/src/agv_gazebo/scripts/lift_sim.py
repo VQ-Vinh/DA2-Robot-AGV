@@ -41,9 +41,9 @@ class LiftSim(Node):
         super().__init__('lift_sim')
         self.up_pos = self.declare_parameter('up_position', 0.03).value
         self.tol = self.declare_parameter('tolerance', 0.004).value   # 2 mm: lan s4 mat nang dung o 2.0 mm sau khi mo khoa ke -> bao loi
-        self.timeout = self.declare_parameter('timeout_s', 5.0).value
+        self.timeout = self.declare_parameter('timeout_s', 10.0).value
         self.load_hold = self.declare_parameter('load_hold_s', 0.5).value
-        self.speed = self.declare_parameter('speed', 0.02).value     # m/s, khop lift_speed (URDF)
+        self.speed = self.declare_parameter('speed', 0.0067).value   # m/s, khop lift_speed (URDF): T8 buoc 2 mm, 200 vong/phut
         self.period = 0.05
         self.lock_shelves = self.declare_parameter('lock_shelves', True).value
         self.contact_shelf = None  # ke dang cham mat nang (ten model trong Gazebo)

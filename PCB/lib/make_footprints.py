@@ -3,6 +3,7 @@
 Toa do lay tu file thiet ke goc, khong do bang tay:
   - TB6612FNG : SparkFun_Motor_Driver-TB6612FNG_v11.brd  (github.com/sparkfun/Motor_Driver-Dual_TB6612FNG)
   - INA169    : Adafruit INA169 CurPowerMonitor.brd       (github.com/adafruit/Adafruit-INA169-Breakout-PCB)
+  - INA219    : Adafruit_INA219_CurPowerMonitor.brd       (github.com/adafruit/Adafruit-INA219-Current-Sensor-PCB)
   - XL4015    : XL4015_Converter.kicad_mod                (github.com/rayvburn/KiCad)
 So thu tu pad trung voi so chan cua ky hieu trong agv_modules.kicad_sym.
 
@@ -68,6 +69,25 @@ def outline(x1, y1, x2, y2):
         + rect(x1 - m, y1 - m, x2 + m, y2 + m, "F.CrtYd", 0.05)
     )
 
+# Mo hinh 3D (tai tu GrabCAD, dat trong lib/3d/models/, khong dua len git):
+#   xl4015.step            grabcad.com/library/step-down-xl4015-1
+#   ina219.step/.wrl      grabcad.com/library/ina219-dc-current-sensor-1 (CJMCU-219)
+#   tb6612fng.step         grabcad.com/library/sparkfun-motor-driver-1 (hang chan cach 15 mm, khop footprint)
+#   a4988_socketed.step    grabcad.com/library/a4988-stepper-driver-with-pins-socketed-1
+#   gy_bno055.step         grabcad.com/library/gy-bno055-1
+#   kf301_2p.step          grabcad.com/library/kf301-5-0-2p-1
+#   stm32f4_discovery.step/.wrl grabcad.com/library/stm32f4-1
+# Module cam tren hang rao cai: day mach cao 11 mm (hang rao cai 8.5 + nhua hang rao duc 2.5).
+M3D = "${KIPRJMOD}/lib/3d/models/"
+SOCKET_1X08 = "${KICAD10_3DMODEL_DIR}/Connector_PinSocket_2.54mm.3dshapes/PinSocket_1x08_P2.54mm_Vertical.step"
+
+
+def model(path, off=(0, 0, 0), rot=(0, 0, 0)):
+    return ('  (model "%s"' % path + chr(10) +
+            "    (offset (xyz %g %g %g))" % tuple(off) + chr(10) +
+            "    (scale (xyz 1 1 1))" + chr(10) +
+            "    (rotate (xyz %g %g %g))" % tuple(rot) + chr(10) + "  )" + chr(10))
+
 
 def tb6612():
     """Board 20.32 x 20.32 mm, hai hang 1x8 cach nhau 15.24 mm. Goc = pad 1 (VM)."""
@@ -85,6 +105,7 @@ def tb6612():
         y = i * 2.54
         s += pad(i + 9, 15.24, y, 2.2, 1.7, HDR_DRILL)
         s += label(n, 11.7, y, 0.7)
+    s += model(SOCKET_1X08) + model(SOCKET_1X08, (15.24, 0, 0)) + model(M3D + "tb6612fng.step", (18.1, -8.89, 10.02))
     return s + ")\n"
 
 
@@ -111,6 +132,33 @@ def ina169():
     return s + ")\n"
 
 
+def ina219():
+    """Board 25.4 x 22.24 mm. Goc = chan VCC cua hang rao 1x6.
+
+    Hang rao: VCC, GND, SCL, SDA, VIN-, VIN+. Hai lo domino 3.5 mm (VIN-, VIN+) cach
+    hang rao 16.106 mm; pad trung so voi chan hang rao tuong ung. Dong lon phai di qua
+    hai lo domino (chan hang rao chi chiu khoang 3 A).
+    So pad theo ky hieu: 1 VCC, 2 GND, 3 SCL, 4 SDA, 5 VIN-, 6 VIN+.
+    """
+    s = header("INA219_Module", "Module INA219 kieu Adafruit 904: hang rao 1x6 + 2 lo domino 3.5 mm")
+    s += text("Reference", "REF**", 6.35, 3.9, "F.SilkS")
+    s += text("Value", "INA219_Module", 6.35, -20.6, "F.Fab")
+    s += outline(-6.731, -19.446, 18.669, 2.794)
+    for i, n in enumerate(["VCC", "GND", "SCL", "SDA", "VIN-", "VIN+"]):
+        x = i * 2.54
+        # hai chan VIN-/VIN+ cua hang rao de trong (khong gan net): dong lon di qua hai lo domino,
+        # tren module hai cap chan nay da noi san voi nhau
+        s += pad(i + 1 if i < 4 else "", x, 0, 1.7, 2.2, HDR_DRILL, "rect" if i == 0 else "oval")
+        s += label(n, x, -2.2, 0.6)
+    s += pad("5", 4.269, -16.106, 2.6, 3.4, PWR_DRILL)
+    s += pad("6", 7.769, -16.106, 2.6, 3.4, PWR_DRILL)
+    s += label("VIN-", 1.6, -13.2, 0.6)
+    s += label("VIN+", 10.4, -13.2, 0.6)
+    s += model("${KICAD10_3DMODEL_DIR}/Connector_PinHeader_2.54mm.3dshapes/PinHeader_1x06_P2.54mm_Vertical.step", (0, 0, 0), (0, 0, -90))
+    s += model(M3D + "ina219.wrl", (-6.44, -3.0, 2.5), (-90, 0, 0))
+    return s + ")" + chr(10)
+
+
 def xl4015():
     """Board 54 x 24 mm, 4 pad o 4 goc: cach 50 mm theo chieu dai, 20 mm theo chieu ngan."""
     s = header("XL4015_Module", "Module buck XL4015 5A, 4 pad goc 50 x 20 mm")
@@ -121,11 +169,12 @@ def xl4015():
                          ("3", "OUT+", 25, -10), ("4", "OUT-", 25, 10)]:
         s += pad(num, x, y, 4.0, 3.2, PWR_DRILL, "rect" if num == "1" else "oval")
         s += label(n, x + (5.5 if x < 0 else -5.5), y, 1.0)
+    s += model(M3D + "xl4015.step", (0, 0, 2.5), (0, 0, 90))
     return s + ")\n"
 
 
 if __name__ == "__main__":
     OUT.mkdir(exist_ok=True)
-    for name, fn in [("TB6612FNG_Module", tb6612), ("INA169_Module", ina169), ("XL4015_Module", xl4015)]:
+    for name, fn in [("TB6612FNG_Module", tb6612), ("INA169_Module", ina169), ("INA219_Module", ina219), ("XL4015_Module", xl4015)]:
         (OUT / f"{name}.kicad_mod").write_text(fn(), encoding="utf-8", newline="\n")
         print("wrote", name)
