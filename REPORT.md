@@ -20,10 +20,10 @@ Quy ước mỗi mục:
 
 | Khối | Linh kiện |
 |---|---|
-| Máy tính trên xe | Raspberry Pi 4 (4 GB), Ubuntu Server 24.04, ROS 2 Jazzy |
+| Máy tính trên xe | Raspberry Pi 4 (4 GB), Ubuntu Server 24.04, ROS 2 Jazzy → đổi sang Raspberry Pi 5 (PR #21) |
 | Vi điều khiển | STM32F4 Discovery (STM32F407), FreeRTOS, nối với Pi qua UART (USART2) |
-| Động cơ | 4 × GA25-370 có encoder, kiểu skid-steer (4 bánh thường), 2 × driver L298N |
-| Cảm biến | YDLidar X2/X4 (USB), IMU BNO055, đo pin INA226, PiCamera |
+| Động cơ | 4 × GA25-370 có encoder, kiểu skid-steer (4 bánh thường), 2 × driver L298N → đổi sang 2 × TB6612FNG (PR #21); cơ cấu nâng dùng động cơ bước + A4988 |
+| Cảm biến | YDLidar X2/X4 (USB), IMU BNO055, đo pin INA226 → đổi sang INA169 5 A (PR #21), PiCamera |
 | Khung | 2 tầng mica 30 × 30 cm cách nhau 10 cm, bánh 65 mm |
 
 **Kiến trúc phần mềm:**
@@ -71,6 +71,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 09/10/2026 | Gộp #14–#17 vào `main`; README gốc thành trang giới thiệu có sơ đồ (kiến trúc, tiến độ, cấu trúc repo) | #18 |
 | 09/10/2026 | Mô hình cơ khí FreeCAD: khung, động cơ + bánh, lidar, Raspberry Pi, PCB (giữ chỗ), pin, cơ cấu nâng | #20 |
 | 09–10/10/2026 | Mạch PCB: chốt linh kiện, sơ đồ chân STM32 cho 4 bánh + nâng, sơ đồ nguyên lý KiCad theo khối, rà soát linh kiện thừa, bản xếp PCB nháp | #21 |
+| 13/10/2026 | Cập nhật tiến độ: README (phần cứng đã chốt, mốc thời gian, thư mục PCB), danh sách vấn đề còn mở | — |
 
 ---
 
@@ -707,13 +708,15 @@ Các sự cố gặp phải, theo thứ tự:
 
 1. **Hệ thống đôi khi khựng khoảng 1 s** khi máy tải nặng (vòng điều khiển tụt xuống 9.6 Hz, TF cũ). **Trong mô phỏng đã giảm hẳn** nhờ bước vật lý 3 ms (mục 4.8: "Control loop missed" 0–1 mỗi lần so với 11–152). Vẫn cần theo dõi khi chạy trên Pi 4 (yếu hơn PC).
 2. **Vùng chết của động cơ:** xe không đi chậm hơn 0.34 m/s và không quay chậm hơn 1.5 rad/s. Nên cải thiện điều khiển tốc độ thấp trên STM32 để hạ `SPD_RPM_MIN`. Đo ở mục 4.9: 50 RPM làm xe tới staging lệch góc ít hơn ~4 lần và đặt kệ chính xác hơn. Mục 4.14: đây là nguyên nhân chính khiến xe "vòng vòng". Tắt vùng chết thì góc quay thừa khi chui gầm giảm từ 627° xuống 4°; phần mềm mới chỉ giảm được một phần. Hướng thử: ở tốc độ thấp, firmware "đá" duty cao lúc khởi động rồi để PID giữ tốc độ, vì ma sát động nhỏ hơn ma sát tĩnh (chưa kiểm chứng trên xe thật).
-3. **Phần cứng chưa làm:** cầu nối IMU phát `/imu/raw` (node `imu_bias` trừ bias con quay rồi mới tới EKF, mục 4.15), chốt định vị trên mặt nâng (kệ không trượt khi xe quay; mô phỏng đã khoá kệ, mục 4.14), mở rộng 4 bánh, node cầu nối UART Pi ↔ STM32 (phải có giữ bán kính cua + covariance cho odom), YDLidar, BNO055, INA226.
+3. **Phần cứng chưa làm:** cầu nối IMU phát `/imu/raw` (node `imu_bias` trừ bias con quay rồi mới tới EKF, mục 4.15), chốt định vị trên mặt nâng (kệ không trượt khi xe quay; mô phỏng đã khoá kệ, mục 4.14), firmware 4 bánh + cơ cấu nâng (đã có sơ đồ chân trong CubeMX, mục 4.17, chưa có code), node cầu nối UART Pi ↔ STM32 (phải có giữ bán kính cua + covariance cho odom), YDLidar, BNO055, INA169. Nhánh mô phỏng (`battery_sim.py`, `RasPi/README.md`) vẫn ghi INA226.
 4. **Kích thước xe** (track, wheelbase) vẫn là ước lượng, cần đo xe thật. Mô hình FreeCAD (mục 4.16) đổi track còn 270 mm (bánh nằm trong khung), thân xe cao hơn URDF 5 mm, lidar thật cao 58.4 mm; URDF, `effective_track` và các tham số Nav2 chưa cập nhật theo. Cần đo GA25-370, gá động cơ và YDLidar thật.
 5. **Node Python trong mô phỏng tốn CPU vì `/clock`:** đã giảm từ 38–75 % xuống 30–48 % mỗi node nhờ bước 3 ms (mục 4.8); vẫn còn vì `/clock` 333 tin/s. Chỉ có trong mô phỏng.
 6. **Dashboard chưa có đăng nhập:** chỉ mở trong LAN / Tailscale.
 7. **Cửa sổ Gazebo crash lúc khởi động** (driver NVIDIA D3D12 của WSL, 1/4 lần chạy): launch tự mở lại (mục 4.15). Có 1 lần xe không rời được trạm sạc vì "vật cản" ngay sau xe, chưa rõ nguyên nhân, chạy lại thì hết.
 8. **Nav2 thỉnh thoảng không khởi động xong:** container nạp node nhưng phản hồi dịch vụ `load_node` cho launch bị timeout, launch chờ mãi (1/10 lần chạy ngày 08/10). Chưa tìm nguyên nhân; khi gặp thì chạy lại.
 9. **Kiva:** lấy kệ đã chui theo chân kệ (lệch ngang ≤ 0.9 cm, mục 4.10) nhưng xe dừng quá tâm kệ 4–6 cm; trả kệ vẫn theo bản đồ. Đã có đơn hàng (mục 4.11), pin và tự sạc (mục 4.12), xử lý sự cố (mục 4.13); chưa phát hiện mất định vị.
+10. **PCB (mục 4.17):** chưa đi dây, chưa chạy DRC, chưa đặt được luật thiết kế 1 lớp; file PCB nháp chưa cập nhật theo sơ đồ đã bỏ 13 linh kiện; footprint module chưa ướm với module thật; dòng kẹt trục GA25 chưa đo; kích thước board 120 × 120 mm nhiều khả năng không đủ (Discovery chiếm 66 × 97 mm), mô hình FreeCAD vẫn giữ chỗ 120 × 120 mm và Raspberry Pi 4B.
+11. **PD13 (LED nhịp tim) chưa có trong `.ioc`** nhưng `App/Src/app.c` vẫn đảo chân này; build vẫn qua nhưng chân chưa được cấu hình ngõ ra nên nhiều khả năng LED không nháy (chưa kiểm chứng trên board). Cần bật lại PD13 là GPIO_Output trong CubeMX.
 
 ## 7. Cách ghi tiếp tài liệu này
 Mỗi khi xong một phần việc hoặc sửa xong một sự cố, thêm vào mục tương ứng theo quy ước ở đầu file: mục tiêu, cách làm, sai lầm, nguyên nhân, cách sửa, kết quả có số liệu, bài học. Quy tắc này nằm trong skill `.claude/skills/report-log`.
