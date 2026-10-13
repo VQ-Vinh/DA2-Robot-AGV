@@ -238,7 +238,7 @@ python3 agv_navigation/scripts/make_keepout_mask.py
 ```
 (`make_warehouse.py` ghi world và danh sách dock trong `nav2.yaml`; đổi vị trí ô thì lập lại bản đồ trước khi tạo vùng cấm.)
 
-**Xe:** lidar đặt **giữa 2 tầng** (mặt quét 0.12 m): trên nóc thì bị đáy kệ che khi chui gầm; ở đây lidar thấy cả pallet 15 cm. Tầng 2 có **mặt nâng** (khớp `lift_joint`, hành trình 3 cm, 2 cm/s như vít me) và cảm biến "có kệ".
+**Xe:** lidar đặt **giữa 2 tầng**, phía trước xe 108 mm theo mô hình CAD (mặt quét 0.12 m): trên nóc thì bị đáy kệ che khi chui gầm; ở đây lidar thấy cả pallet 15 cm. Tầng 2 có **mặt nâng** (khớp `lift_joint`, hành trình 3 cm, 2 cm/s như vít me) và cảm biến "có kệ".
 
 | Node | Việc | Xe thật |
 |---|---|---|
@@ -368,8 +368,8 @@ agv_cmd.py ──/mission/command──► mission_server ──NavigateToPose�
 
 ## Kích thước xe
 
-Đặt ở đầu `agv_description/urdf/agv.urdf.xacro`: thân 2 tầng mica 30 × 30 cm cách nhau 10 cm, 4 trụ ốc ở góc, linh kiện ở tầng 1, lidar đặt trên khối linh kiện **giữa 2 tầng** (mặt quét cao ~0.12 m), mặt nâng trên tầng 2, bánh 65 mm. Giá trị đánh dấu `(*)` là ước lượng (track 0.34 m, wheelbase 0.20 m, độ dày mica...), cần đo xe thật rồi sửa.
+Đặt ở đầu `agv_description/urdf/agv.urdf.xacro`: thân 2 tầng mica 30 × 30 cm cách nhau 10 cm, 4 trụ ốc ở góc, linh kiện ở tầng 1, lidar **giữa 2 tầng**, phía trước tâm xe 108 mm trên 4 trụ M3 × 25 (lấy từ `CAD/agv.FCStd`; `laser_frame` ở mặt quét, cao 0.1199 m), mặt nâng trên tầng 2, bánh 65 mm. Giá trị đánh dấu `(*)` là ước lượng (track 0.34 m, wheelbase 0.20 m, độ dày mica...), cần đo xe thật rồi sửa.
 
-Lidar quét ở ~0.12 m: thấy pallet 15 cm và chân kệ mini, không thấy vật thấp hơn 12 cm. 4 trụ ốc giữa 2 tầng che lidar vài độ; `payload_manager` lọc bỏ.
+Lidar quét ở ~0.12 m: thấy pallet 15 cm và chân kệ mini, không thấy vật thấp hơn 12 cm. 4 trụ ốc giữa 2 tầng che lidar vài độ; `payload_manager` lọc bỏ. Khung lọc (thân xe, kệ đang chở) và khung bỏ điểm của `shelf_detector` tính quanh `base_link`; vị trí lidar đọc từ TF `base_link → laser_frame`, nên dời lidar chỉ cần sửa URDF.
 
 `effective_track` (0.45 m) là track hiệu dụng cho skid-steer: bánh trượt ngang khi quay nên xe quay ít hơn tính theo `track_width`. Hiệu chỉnh bằng cách cho xe quay tại chỗ rồi đặt `effective_track` mới = `effective_track` hiện tại × `góc_odom / góc_thật`.
