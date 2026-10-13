@@ -414,9 +414,10 @@ docking_server:
     # Types of docks
     # AGV: ke mini (chui gam, khong sac). Xe dung o staging trong loi di, truoc o 1.0 m, roi tien
     # thang vao. 2 loai:
-    #   shelf_dock: LAY ke - chui gam theo ke THAT do shelf_detector.py tim tu 4 chan ke
+    #   shelf_dock: chui gam theo 4 tru chan do THAT do shelf_detector.py tim (lay va tra pallet)
     #               (/detected_dock_pose), khong theo vi tri o (ke tra ve lech vai cm moi lan, AMCL lech ~5 cm)
-    #   slot_dock : TRA ke vao o trong (khong co chan ke nao de nhan dien) - theo vi tri o tren ban do
+    #   slot_dock : TRA theo vi tri o tren ban do (ke cu: o trong khong co gi de nhan dien). Pallet tren
+    #               chan do co dinh: o trong van con 4 tru -> order_manager tra bang shelf_dock (return_detect)
     dock_plugins: ['simple_charging_dock', 'shelf_dock', 'slot_dock']
     shelf_dock:
       plugin: 'opennav_docking::SimpleNonChargingDock'
