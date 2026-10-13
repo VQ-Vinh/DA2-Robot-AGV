@@ -139,6 +139,8 @@ class OrderManager(Node):
             depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.status_pub = self.create_publisher(String, 'order/status', latched)
         self.lift_pub = self.create_publisher(String, 'lift/command', 10)
+        # Bao payload_manager xe dang o trong chan do pallet (dung footprint xe, khong dung footprint pallet)
+        self.in_slot_pub = self.create_publisher(Bool, 'payload/in_slot', latched)
         self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         self.create_subscription(String, 'order/command', self.on_command, 10)
         self.create_subscription(String, 'lift/state', lambda m: setattr(self, 'lift_state', m.data), latched)
@@ -687,12 +689,27 @@ class OrderManager(Node):
         # Tu buoc nang ke tro di (ca sau khi da ha ke, xe con duoi gam ke) loi nao cung KHONG duoc tra don
         # ve hang doi / chay lai tu dau: thanh su co cho nguoi, lam lai dung buoc (REPORT.md 4.13)
         lift_index = [name for name, _ in steps].index('lift')
+        # Cac buoc xe o trong chan do ma co the dang cho pallet: pallet nam cao hon dinh 4 tru, chi than xe
+        # moi dung tru -> payload_manager dung footprint xe (footprint pallet trum 4 tru -> du bao va cham)
+        in_slot_steps = ('lift', 'undock', 'return_dock', 'lower')
+        try:
+            self.run_steps(o, steps, lift_index, in_slot_steps)
+        finally:
+            self.in_slot_pub.publish(Bool(data=False))
+        with self.lock:
+            dt = time.time() - self.db.execute('SELECT started FROM orders WHERE id=?', (oid,)).fetchone()[0]
+        self.set_order(oid, status='done', finished=time.time())
+        self.say(f'Don #{oid} xong sau {dt:.1f} s')
+
+    def run_steps(self, o, steps, lift_index, in_slot_steps):
+        oid, shelf = o['id'], o['shelf']
         i = 0
         while i < len(steps):
             name, fn = steps[i]
             if name in ('staging', 'dock') and oid in self.cancel_requested:
                 raise OrderError('nguoi dung huy')
             self.set_step(name)
+            self.in_slot_pub.publish(Bool(data=name in in_slot_steps))
             try:
                 try:
                     fn()
@@ -708,10 +725,6 @@ class OrderManager(Node):
                     raise
                 self.wait_ack()
                 self.say(f'Don #{oid}: tiep tuc buoc "{STEP_NAME.get(name, name)}"')
-        with self.lock:
-            dt = time.time() - self.db.execute('SELECT started FROM orders WHERE id=?', (oid,)).fetchone()[0]
-        self.set_order(oid, status='done', finished=time.time())
-        self.say(f'Don #{oid} xong sau {dt:.1f} s')
 
     def next_order(self):
         with self.lock:
