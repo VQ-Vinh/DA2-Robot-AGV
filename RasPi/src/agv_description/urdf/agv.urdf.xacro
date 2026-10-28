@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!--
-  AGV kho hang: xe skid-steer 4 banh (GA25-370 x4), lidar YDLidar X4, IMU BNO055.
+  AGV kho hang: xe skid-steer 4 banh (GA25-370 x4), lidar YDLidar X2L, IMU BNO055.
   KICH THUOC VA HINH DANG LAY TU MO HINH CO KHI CAD/agv.FCStd (REPORT.md 4.16, 4.20):
     - so do: bang Params cua file CAD (CAD/export_meshes.py in ra khi chay)
     - hinh hien thi: luoi STL trong meshes/, sinh boi CAD/export_meshes.py. Sua CAD thi chay lai script
@@ -8,7 +8,7 @@
   Than xe 2 tang: 2 tam mica 30 x 30 cm cach nhau 10 cm, 4 tru oc. Banh nam TRONG khung (tang 1 khoet 4 cho).
     - Tang 1: DAU XE la phia PCB + Pi + camera, lidar o phia SAU (= -X cua file CAD, luoi da quay 180 deg), pin treo duoi tang 1, dong co nang NEMA17; 4 vit me T8 noi 2 tang
     - Tang 2: mat nang de chui gam va nang ke mini (kieu Amazon Kiva)
-  Lidar nam giua 2 tang, lech ve SAU 0.095 m. 4 tru oc va 4 vit me che vai do -> payload_manager loc bo.
+  Lidar nam giua 2 tang, lech ve SAU 0.092 m. 4 tru oc va 4 vit me che vai do -> payload_manager loc bo.
   Va cham (collision) van la hinh hop / tru don gian.
   Frame: base_footprint (mat dat) -> base_link (tam truc banh) -> banh, laser_frame, imu_link,
          lift_plate (khop truot lift_joint, 0 = ha, lift_stroke = nang).
@@ -22,7 +22,7 @@
   <xacro:property name="plate_thickness"  value="0.005"/>  <!-- (*) -->
   <xacro:property name="plate_gap"        value="0.10"/>   <!-- mat tren tang 1 -> mat duoi tang 2 -->
   <xacro:property name="plate1_below_axle" value="0.0175"/> <!-- (*) theo ga chu L cua GA25: mat duoi tang 1 cao hon truc banh -->
-  <xacro:property name="body_mass"        value="2.6"/>    <!-- (*) ca xe tru banh va mat nang: 2 mica ~1.0, 5 dong co ~0.7, pin, mach, lidar -->
+  <xacro:property name="body_mass"        value="2.8"/>    <!-- (*) ca xe tru banh va mat nang: 2 mica ~1.0, 5 dong co ~0.7, pin LiPo 3S 5200mAh ~0.4, mach, lidar -->
 
   <!-- Banh "65 mm": duong kinh ngoai thuc 68 mm (model banh) -->
   <xacro:property name="wheel_radius"     value="0.034"/>
@@ -35,13 +35,13 @@
        effective_track moi = effective_track cu * goc_odom / goc_that. -->
   <xacro:property name="effective_track"  value="0.383"/>  <!-- hieu chinh trong sim: quay tai cho 2.5 rad/s, odom 2.49 / that 2.32 rad/s voi track 0.357 -->
 
-  <!-- Lidar YDLidar X4 (model 101.4 x 71 x 59 mm), tai bat cach mat tang 1 35 mm (tru M3 x 35),
-       tam dau quay cach tam xe 0.095 m ve phia SAU (dau xe la phia camera) -->
-  <xacro:property name="lidar_x"          value="-0.095"/>
-  <xacro:property name="lidar_scan_z"     value="0.123"/>  <!-- (*) so voi mat dat: giua dau quay (de lidar cao toi 0.113, dinh 0.133) -->
-  <xacro:property name="lidar_radius"     value="0.033"/>
-  <xacro:property name="lidar_body_z0"    value="0.074"/>  <!-- day chan lidar so voi mat dat -->
-  <xacro:property name="lidar_body_z1"    value="0.133"/>
+  <!-- Lidar YDLidar X2L (STEP GrabCAD: de 101 x 57 x 11 mm, dau quay D60 x 18 mm, dong co thoi xuong 19.4 mm duoi de),
+       day de cach mat tang 1 50 mm (3 tru M3 cai-cai 50), tam dau quay cach tam xe 0.092 m ve phia SAU -->
+  <xacro:property name="lidar_x"          value="-0.092"/>
+  <xacro:property name="lidar_scan_z"     value="0.1265"/> <!-- (*) so voi mat dat: giua dau quay (phan dung yen cao toi 0.119, dinh 0.1355) -->
+  <xacro:property name="lidar_radius"     value="0.030"/>
+  <xacro:property name="lidar_body_z0"    value="0.0871"/> <!-- day dong co lidar so voi mat dat -->
+  <xacro:property name="lidar_body_z1"    value="0.1355"/>
 
   <!-- Mat nang tren tang 2 (4 vit me T8 + dai GT2 + NEMA17, tu giu tai khi mat dien) -->
   <xacro:property name="lift_plate_size"  value="0.26"/>

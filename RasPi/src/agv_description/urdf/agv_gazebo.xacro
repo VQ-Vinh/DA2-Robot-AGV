@@ -104,7 +104,7 @@
     </plugin>
   </gazebo>
 
-  <!-- Lidar 2D: thong so gan YDLidar X4 (360 do, ~7 Hz, 0.12-10 m) -->
+  <!-- Lidar 2D: thong so gan YDLidar X2L (360 do, 5-8 Hz, 3000 diem/s, 0.12-8 m) -->
   <gazebo reference="laser_frame">
     <sensor name="lidar" type="gpu_lidar">
       <gz_frame_id>laser_frame</gz_frame_id>
@@ -116,7 +116,7 @@
       <lidar>
         <scan>
           <horizontal>
-            <samples>720</samples>
+            <samples>430</samples>   <!-- 3000 diem/s / 7 Hz -->
             <resolution>1</resolution>
             <min_angle>-3.14159</min_angle>
             <max_angle>3.14159</max_angle>
@@ -129,13 +129,13 @@
             <max_angle>0.0</max_angle>
           </vertical>
         </scan>
-        <!-- min 0.05 (X4 that: 0.12). Gazebo KHONG ve vat gan hon min: voi 0.12 thi tia di xuyen qua 2 tru oc
+        <!-- min 0.05 (X2L that: 0.12). Gazebo KHONG ve vat gan hon min: voi 0.12 thi tia di xuyen qua 2 tru oc
              va 2 vit me gan lidar (cach 0.075-0.112 m) nhu the chung khong ton tai. Xe that thi cac
              tru nay chan tia (lidar tra ve 0 = khong hop le). De 0.05 cho lidar mo phong thay chung,
              payload_manager loc bo (NaN) -> cung mat cac goc do nhu xe that (REPORT.md 4.20). -->
         <range>
           <min>0.05</min>
-          <max>10.0</max>
+          <max>8.0</max>
           <resolution>0.01</resolution>
         </range>
         <noise>

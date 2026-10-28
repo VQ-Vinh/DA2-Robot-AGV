@@ -6,7 +6,7 @@ Chay bang FreeCAD dong lenh (khong can mo cua so):
 Moi file la mot nhom chi tiet cung mau, don vi met, trong frame cua link URDF tuong ung:
   base_plates.stl  2 tam mica                               frame base_link (tam truc banh)
   base_parts.stl   tru oc, dong co + ga, Pi, PCB, pin, phan co dinh cua co cau nang   base_link
-  lidar.stl        YDLidar X4 (de, dong co, chan) + 4 tru do   base_link
+  lidar.stl        YDLidar X2L (de, dong co) + 3 tru do        base_link
   lidar_head.stl   dau quay cua lidar (mau xanh)             base_link
   wheel.stl        lop + mam + khop noi (banh trai; banh phai quay 180 deg)   frame banh
   lift_plate.stl   mat nang + 4 dai oc + tru                frame lift_plate (tam mat nang)
@@ -73,7 +73,7 @@ write(plates, 'base_plates.stl', axle)
 
 parts = Mesh.Mesh()
 names = ['Standoff%d' % i for i in range(1, 5)] + ['StandoffTop%d' % i for i in range(1, 5)] + ['PiPost%d' % i for i in range(1, 5)] + \
-        ['PCBBoard'] + ['PCBPost%d' % i for i in range(1, 5)] + ['BatCells', 'BatSpacers', 'BatBMS', 'BatHolder', 'PiCam3', 'CamBracket'] + \
+        ['PCBBoard'] + ['PCBPost%d' % i for i in range(1, 5)] + ['LipoPack', 'BatHolder', 'PiCam3', 'CamBracket'] + \
         ['LiftScrew%d' % i for i in range(1, 5)] + ['LiftBearing%d' % i for i in range(1, 5)] + \
         ['LiftPulley%d' % i for i in range(1, 5)] + ['LiftIdler1', 'LiftIdler2', 'LiftIdlerStud1', 'LiftIdlerStud2',
                                                       'LiftBelt', 'LiftMotorPulley', 'LiftMotor'] + \
@@ -99,16 +99,16 @@ def placed(name):
     return m
 
 
-# Lidar trong CAD tach thanh 4 luoi theo mau: de, dau quay (xanh), dong co, 4 chan
+# Lidar YDLidar X2L (STEP GrabCAD ydlidar-x2l-lidar-1): dau quay rieng, de + dong co + khop, 3 tru do
 lx = P('lidar_x')
-head = placed('LidarHead')
+head = glob('LidarX2L_Head')
 body = Mesh.Mesh()
-for n in ('LidarX4', 'LidarMotor', 'LidarLegs'):
-    body.addMesh(placed(n))
+for n in ('LidarX2L_Base', 'LidarX2L_Motor', 'LidarX2L_Coupler'):
+    body.addMesh(glob(n))
 head_top = head.BoundBox.ZMax
-# phan khong quay (de, tai bat, duoi dong co) nam ngoai ban kinh dau quay: mat quet phai cao hon no
+# phan khong quay (de, duoi dong co) nam ngoai ban kinh dau quay: mat quet phai cao hon no
 out_top = max(p.z for p in body.Points if ((p.x - lx) ** 2 + p.y ** 2) ** 0.5 > P('lidar_head_dia') / 2 + 1.0)
-for i in range(1, 5):
+for i in range(1, 4):
     body.addMesh(glob('LidarPost%d' % i))
 write(body, 'lidar.stl', axle)
 write(head, 'lidar_head.stl', axle)

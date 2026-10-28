@@ -92,3 +92,4 @@ PCB/lib/ref/
 .mcp-backups/
 # Mo hinh 3D tai tu GrabCAD (cua nguoi khac dang), nguon ghi trong PCB/lib/make_footprints.py
 PCB/lib/3d/
+PCB/export/jlcpcb/

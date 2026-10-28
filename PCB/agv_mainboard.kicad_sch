@@ -12948,7 +12948,7 @@
 				)
 			)
 		)
-		(property "Value" "BAT_3S"
+		(property "Value" "XT60_LIPO_3S"
 			(at 27.94 51.46 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -12958,7 +12958,7 @@
 				)
 			)
 		)
-		(property "Footprint" "TerminalBlock:TerminalBlock_MaiXu_MX126-5.0-02P_1x02_P5.00mm"
+		(property "Footprint" "agv_modules:XT60PW-M_Battery_Pin1Plus"
 			(at 27.94 45.72 0)
 			(hide yes)
 			(show_name no)
@@ -12969,7 +12969,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.tme.eu/Document/b13629717d44ae038681dba08d18c0b6/XT60PW-M.pdf"
 			(at 27.94 45.72 0)
 			(hide yes)
 			(show_name no)
@@ -12980,7 +12980,7 @@
 				)
 			)
 		)
-		(property "Description" "Generic screw terminal, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)"
+		(property "Description" "Jack XT60 duc han mach nam ngang, nguon vao tu pin LiPo 3S (chan 1 = +)"
 			(at 27.94 45.72 0)
 			(hide yes)
 			(show_name no)
