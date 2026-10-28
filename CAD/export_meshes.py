@@ -73,7 +73,7 @@ write(plates, 'base_plates.stl', axle)
 
 parts = Mesh.Mesh()
 names = ['Standoff%d' % i for i in range(1, 5)] + ['StandoffTop%d' % i for i in range(1, 5)] + ['PiPost%d' % i for i in range(1, 5)] + \
-        ['PCBBoard'] + ['PCBPost%d' % i for i in range(1, 5)] + ['BatCells', 'BatSpacers', 'BatBMS', 'BatHolder', 'PiCam3', 'CamBracket'] + \
+        ['PCBBoard'] + ['PCBPost%d' % i for i in range(1, 5)] + ['LipoPack', 'BatHolder', 'PiCam3', 'CamBracket'] + \
         ['LiftScrew%d' % i for i in range(1, 5)] + ['LiftBearing%d' % i for i in range(1, 5)] + \
         ['LiftPulley%d' % i for i in range(1, 5)] + ['LiftIdler1', 'LiftIdler2', 'LiftIdlerStud1', 'LiftIdlerStud2',
                                                       'LiftBelt', 'LiftMotorPulley', 'LiftMotor'] + \
