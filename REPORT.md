@@ -75,7 +75,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 13/10/2026 | Cập nhật tiến độ: README (phần cứng đã chốt, mốc thời gian, thư mục PCB), danh sách vấn đề còn mở | — |
 | 13/10/2026 | Dời lidar trong URDF theo CAD; sửa bộ lọc scan và `shelf_detector` tính theo `base_link`; chạy lại test mô phỏng | — |
 | 13/10/2026 | Kho pallet: chân đỡ 4 trụ cố định + pallet có thùng hàng; lập lại bản đồ; trả pallet theo trụ, detector chọn theo ô đích | — |
-| 28/10/2026 | PCB chuyển sang 2 lớp đặt JLCPCB: xếp lại, đi dây bằng Freerouting, DRC sạch, xuất Gerber. CAD: PCB thật 150 × 125 mm, công tắc hành trình, chốt định vị pallet. Danh sách linh kiện tách 2 sheet CAD / PCB, có giá và link | (mục 4.21) |
+| 28/10/2026 | PCB chuyển sang 2 lớp đặt JLCPCB: xếp lại, đi dây bằng Freerouting, DRC sạch, xuất Gerber. CAD: PCB thật 150 × 125 mm, công tắc hành trình. Danh sách linh kiện tách 2 sheet CAD / PCB, có giá và link | (mục 4.21) |
 
 ---
 
@@ -845,7 +845,7 @@ Các sự cố gặp phải, theo thứ tự:
 - **CAD (`CAD/agv.FCStd`):**
   - Thay tấm giữ chỗ 120 × 120 mm bằng `pcb_len` × `pcb_wid` = 150 × 125 mm. Ở `pcb_x` = −56 mm, mép trước PCB chỉ cách gá camera 1.5 mm, nên dời sang −54 mm (cách 3.5 mm); Pi đi theo (`pi_x = pcb_x − 8`). Kiểm tra `common()` với mọi chi tiết: không chồng lấn. Nạp mô hình STEP của board thật (648 khối): chỉ có chân TO-220 của Q1/U3 chạm Pi (0.04 mm³), vì mô hình để chân dài 8 mm dưới board. Khi hàn, chân được cắt ngắn.
   - **Công tắc hành trình:** 2 × KW12 bắt sát mặt dưới tầng 2. Công tắc dưới có cần gạt thò lên qua khe 12 × 6 mm, mặt nâng đè xuống khi hạ hết. Công tắc trên bị một cờ in 3D (6 × 6 × 45.5 mm, treo dưới mặt nâng, đi qua khe 10 × 10 mm) chạm khi nâng đủ 30 mm. Không đặt công tắc phía trên mặt nâng vì sẽ vướng pallet. Kiểm tra ở `lift_pos` 0 và 30: cần gạt dưới bị ép 1.5 mm (chủ ý); cờ vừa chạm cần gạt trên; không chi tiết nào khác va chạm.
-  - **Chốt định vị pallet:** 2 côn in 3D Ø12 → Ø6, cao 8 mm tại (±100, 0) trên mặt nâng. File in nằm trong `CAD/print/`.
+  - **Chốt định vị pallet (đã bỏ):** đã thêm 2 côn in 3D Ø12 → Ø6, cao 8 mm tại (±100, 0) trên mặt nâng để khoá pallet khi nâng. Người làm đồ án yêu cầu bỏ cùng ngày (pallet thật sẽ phải khoan lỗ khớp chốt); đã xoá chốt, lỗ M3 trên mặt nâng và file in. Việc giữ pallet không trượt trên xe thật vẫn còn mở.
   - Mô hình Pi vẫn là Pi 4B (cùng kích thước bo và lỗ bắt với Pi 5).
 - **Còn mở / chưa kiểm chứng:** chưa ướm footprint với module thật (đặc biệt INA219: footprint vẽ theo board Adafruit, module MCU-219 đang bán có thể khác); chưa đặt mạch. Dây pin 2.0 mm trên đồng 1 oz chịu khoảng 5 A khi nóng thêm 20 °C (ước theo IPC-2221, chưa đo), trong khi cầu chì là 8 A. Lưới STL của mô phỏng chưa xuất lại theo CAD mới (PCB/Pi dời 2 mm). Công tắc nguồn và nút dừng khẩn chưa có chỗ gắn trong CAD. Pallet thật cần 2 lỗ cho chốt định vị.
 - **Bài học:** con số "unrouted" của Freerouting và việc DRC chạy được chưa nói lên kết quả. Phải đọc file đầu ra (SES) và chắc rằng bước lưu trước đó không lỗi giữa chừng, rồi mới tin số liệu.

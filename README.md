@@ -188,7 +188,7 @@ timeline
             : Mô hình cơ khí FreeCAD
             : PCB · chốt linh kiện · sơ đồ chân CubeMX · sơ đồ nguyên lý · xếp linh kiện nháp
             : PCB 2 lớp · đi dây · DRC sạch · Gerber JLCPCB
-            : CAD · PCB thật · công tắc hành trình · chốt định vị pallet
+            : CAD · PCB thật · công tắc hành trình
     Tiếp theo : Đặt mạch · ướm footprint với module thật · mua linh kiện
               : Firmware 4 bánh + cơ cấu nâng · cầu nối UART Pi ↔ STM32
               : Lắp và chạy trên xe thật
