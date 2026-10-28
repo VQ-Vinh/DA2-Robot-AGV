@@ -71,7 +71,7 @@ flowchart TB
 
     LIDAR(["📡 YDLidar"])
     IMU(["🧭 BNO055"])
-    BAT(["🔋 INA169"])
+    BAT(["🔋 INA219"])
     MOT(["4 × GA25-370"])
 
     WEB <-->|HTTP| DASH
@@ -187,9 +187,11 @@ timeline
             : Kiva 3 · đơn hàng · Kiva 4 · pin & sạc · Kiva 5 · sự cố
             : Mô hình cơ khí FreeCAD
             : PCB · chốt linh kiện · sơ đồ chân CubeMX · sơ đồ nguyên lý · xếp linh kiện nháp
-    Tiếp theo : PCB · đi dây · DRC · ướm footprint với module thật
+            : PCB 2 lớp · đi dây · DRC sạch · Gerber JLCPCB
+            : CAD · PCB thật · công tắc hành trình · chốt định vị pallet
+    Tiếp theo : Đặt mạch · ướm footprint với module thật · mua linh kiện
               : Firmware 4 bánh + cơ cấu nâng · cầu nối UART Pi ↔ STM32
-              : Chốt định vị mặt nâng · chạy trên xe thật
+              : Lắp và chạy trên xe thật
 ```
 
 ---

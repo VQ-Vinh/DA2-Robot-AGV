@@ -23,7 +23,7 @@ Quy ước mỗi mục:
 | Máy tính trên xe | Raspberry Pi 4 (4 GB), Ubuntu Server 24.04, ROS 2 Jazzy → đổi sang Raspberry Pi 5 (PR #21) |
 | Vi điều khiển | STM32F4 Discovery (STM32F407), FreeRTOS, nối với Pi qua UART (USART2) |
 | Động cơ | 4 × GA25-370 có encoder, kiểu skid-steer (4 bánh thường), 2 × driver L298N → đổi sang 2 × TB6612FNG (PR #21); cơ cấu nâng dùng động cơ bước + A4988 |
-| Cảm biến | YDLidar X2/X4 (USB), IMU BNO055, đo pin INA226 → đổi sang INA169 5 A (PR #21), PiCamera |
+| Cảm biến | YDLidar X2/X4 (USB), IMU BNO055, đo pin INA226 → đổi sang INA169 5 A (PR #21) → INA219 I2C (mục 4.17), PiCamera |
 | Khung | 2 tầng mica 30 × 30 cm cách nhau 10 cm, bánh 65 mm |
 
 **Kiến trúc phần mềm:**
@@ -75,6 +75,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 13/10/2026 | Cập nhật tiến độ: README (phần cứng đã chốt, mốc thời gian, thư mục PCB), danh sách vấn đề còn mở | — |
 | 13/10/2026 | Dời lidar trong URDF theo CAD; sửa bộ lọc scan và `shelf_detector` tính theo `base_link`; chạy lại test mô phỏng | — |
 | 13/10/2026 | Kho pallet: chân đỡ 4 trụ cố định + pallet có thùng hàng; lập lại bản đồ; trả pallet theo trụ, detector chọn theo ô đích | — |
+| 28/10/2026 | PCB chuyển sang 2 lớp đặt JLCPCB: xếp lại, đi dây bằng Freerouting, DRC sạch, xuất Gerber. CAD: PCB thật 150 × 125 mm, công tắc hành trình, chốt định vị pallet. Danh sách linh kiện tách 2 sheet CAD / PCB, có giá và link | (mục 4.21) |
 
 ---
 
@@ -814,6 +815,41 @@ Các sự cố gặp phải, theo thứ tự:
 - **Giới hạn:** cấu hình cuối chạy 3 lượt 8 đơn, 8 lượt sự cố (5 trước và 3 sau khi thêm vùng cấm). Khối lượng thân xe (2.6 kg) và mặt nâng (0.8 kg) là ước lượng. Các thông số Nav2 (ngoài footprint) chưa chỉnh lại cho xe mới. Bản đồ cũ vẫn dùng (lập khi lidar ở tâm, cao 0.12 m). Vị trí mặt quét trong đầu quay lidar là ước lượng; khe tới động cơ nâng và đai ốc nâng chỉ 5.5–6.5 mm.
 - **Bài học:** đưa bản vẽ cơ khí ngược vào mô phỏng làm lộ hệ quả mà bản vẽ không cho thấy (track hẹp → quay nhanh hơn → chui gầm kém ổn định). Và mô phỏng có thể bỏ sót vật cản rất gần cảm biến; phải đo xem cảm biến mô phỏng có thấy đúng thứ cảm biến thật sẽ thấy không.
 
+### 4.21. Hoàn thiện PCB 2 lớp, mô hình CAD và danh sách linh kiện có giá (28/10/2026)
+
+- **Mục tiêu:** chốt PCB và CAD để đặt mạch và mua linh kiện; danh sách linh kiện đủ, có giá và link.
+- **Đổi hướng PCB:** bỏ bản 1 lớp tự ăn mòn. Ở mục 4.17, bộ đi dây tự viết chỉ nối được 88/145 kết nối, do thứ tự chân header Discovery không khớp thứ tự chân module. Người làm đồ án chọn **2 lớp, đặt JLCPCB**, cho phép đổi chân CubeMX nếu cần; cuối cùng không phải đổi chân nào.
+- **Danh sách linh kiện:** Google Sheet "Danh sách phần cứng" tách thành 2 sheet theo yêu cầu: **CAD** (cơ khí, máy tính, cảm biến, nguồn, in 3D: 42 dòng) và **PCB** (module, linh kiện trên board, đầu nối, gia công: 39 dòng). Giá và link tra ngày 28/10/2026 ở icdayroi (API gợi ý tìm kiếm của trang), thegioiic (API tìm kiếm của trang) và hshop (trang sản phẩm). Hàng bán theo gói có công thức làm tròn số gói (`ROUNDUP(cần mua / số con trong gói) × giá gói`). Tổng cần mua: CAD 6 495 754 đ, PCB 1 584 988 đ. Tổng PCB tính cả Discovery (1 269 000 đ), vì sheet ghi chủ sở hữu LAB nhưng "Đã có" = 0. Chưa có giá: YDLidar X4, mica cắt laser, nút dừng khẩn loại thường đóng (thegioiic chỉ có loại thường mở), vít tự ren M2, chi tiết in 3D, phí làm PCB. Các dòng mica, trụ đồng, vít mà người làm đồ án để trống cột "Đã có" được đặt 0 để vào tổng.
+- **Cách làm PCB:**
+  - Board trên `main` đang để toàn bộ linh kiện ngoài viền (đã chạy `unplace_board.py` để xếp tay) nên phải xếp lại từ đầu. Viết lại `PCB/tools/place_board.py`: mỗi linh kiện cho bằng góc trên-trái hộp courtyard và góc xoay. Bố cục: Discovery ở góc trên phải (mini-USB nạp code sát mép), nguồn ở trên bên trái, driver động cơ và cơ cấu nâng ở dưới bên trái, 4 đầu nối động cơ ở mép dưới, I2C/UART/công tắc hành trình ở dải dưới Discovery. Thêm 4 lỗ M3 (H1–H4) cách mép 4 mm, khớp với trụ trong CAD, đánh dấu chỉ có trên board.
+  - Luật thiết kế theo năng lực JLCPCB 2 lớp: khoảng hở tối thiểu 0.2 mm (lớp Default 0.25), dây tối thiểu 0.2 mm, via 0.6/0.3 mm, lỗ khoan tối thiểu 0.3 mm, đồng cách mép 0.3 mm. Bề rộng theo lớp net: Battery 2.0 mm (bản 1 lớp là 5.0), MotorSupply 1.5, MotorOut 0.8, Supply 0.6, Ground 0.6 (lớp mới).
+  - Đi dây bằng Freerouting 2.1.0 (file jar, Java 21 trong WSL), trao đổi qua file DSN/SES (`tools/import_ses.py`); phủ đồng GND cả 2 lớp; 379 via nối GND hai lớp theo lưới 5 mm (`tools/stitch_gnd.py --fence`); sửa silkscreen bằng `tools/fix_silk.py`.
+  - **Kết quả:** DRC có kiểm tra khớp sơ đồ: **0 vi phạm, 0 pad chưa nối, 0 lỗi lệch so với sơ đồ**. Gerber + file khoan ở `PCB/export/agv_mainboard_jlcpcb.zip`, lỗ nhỏ nhất 0.3 mm. Có ảnh render 3D và PDF bố cục, đi dây trong `PCB/export/`.
+- **Sai lầm và sự cố:**
+
+| # | Sự cố | Nguyên nhân (tìm bằng cách nào) | Cách sửa |
+|---|---|---|---|
+| 1 | Freerouting CLI 2.5.0 (bản native) dừng ngay khi bắt đầu đi dây: `UnsupportedFeatureError: SerializationConstructorAccessor class not found ... ComponentOutline` | Lỗi trong chính bản build GraalVM của Freerouting (đọc log) | Dùng file jar 2.1.0 chạy bằng Java 21 trong WSL. Khi xin phép tải đã báo sai kích thước (20 MB, thật là 67 MB), phải hỏi lại người làm đồ án |
+| 2 | Lần đi dây đầu còn 2 net (VBAT tới J4, J5); sau khi nhập có đoạn +5V lơ lửng. Chạy tiếp Freerouting trên board đã đi dây (bỏ vùng phủ) còn tệ hơn: 5 net | Board chật ở cột trái | Làm lại từ đầu sau khi sửa bố cục (#3, #5) |
+| 3 | Ảnh 3D cho thấy bo GY-BNO055 cắm trên U7 chìa lên đúng chỗ jack audio của Discovery | Render 3D bằng `kicad-cli`; hộp courtyard chỉ có đế cắm 1×8, không có bo module | Dời U7 sang khoảng trống phía trên J21; R8/D4 xuống dải dưới |
+| 4 | Script nhập SES lỗi ở bước tạo vùng phủ nên board không được lưu; DRC chạy sau đó trên board chưa đi dây báo 101 pad hở. Suýt đọc nhầm thành kết quả đi dây | `z.Outline()` trả về `SwigPyObject` ở KiCad 10 (đọc traceback) | Tạo `SHAPE_POLY_SET` riêng rồi `SetOutline`. `board.Remove(zone)` cũng lỗi SWIG, thay bằng `RemoveNative` |
+| 5 | Pad VBAT của J5 (dừng khẩn) ở cuối cột trái bị đường VMOT và dây khác bao kín | Vẽ đồng quanh pad bằng script | Đổi chỗ J5 với J2, để J5 ngay dưới INA219 (nguồn VBAT): còn 1 net |
+| 6 | Sau khi phủ đồng, một số pad GND không có đồng tới (lần 1: U4.3, C6.2) | DSN khai GND là mặt đồng (plane) nên Freerouting coi mọi pad GND là đã nối, rồi đi dây bao kín quanh pad; xem bằng ảnh đồng quanh pad | `stitch_gnd.py`: tìm đoạn dây ngắn (hoặc dây + via) từ pad tới mảnh GND lớn nhất, không phạm khoảng hở. C6.2: 1.68 mm trên B.Cu; U4.3: 3.5 mm + via |
+| 7 | Thử cho Freerouting đi GND như net thường: báo còn 1 net, nhưng sau khi nhập có 6 net encoder bị đứt | Mở file `.ses`: chính Freerouting đã ghi các đoạn dài của ENC3_B, ENC1_B thành đoạn dài 0 | Bỏ kết quả này, quay lại lần đi dây trước (#6) |
+| 8 | DRC báo vùng GND trên B.Cu không nối với nhau | Liệt kê từng mảnh đồng bằng script: hàng chục mảnh rời, có mảnh dưới thân Discovery | Rải via GND theo lưới 5 mm ở chỗ cả 2 lớp đều có đồng (379 via), sau đó xoá mảnh đồng mồ côi |
+| 9 | Pad GND U4.16, U5.16 bị dây bao kín ở cả 2 lớp | Xem ảnh đồng | Ba chân GND (3, 8, 16) đã nối chung trên module TB6612FNG SparkFun, nên khai báo `jumper_pad_groups ("3" "8" "16")` trong footprint (cả `make_footprints.py`) thay vì tắt lỗi DRC; U4.16 có thêm dây thẳng sang U4.8 |
+| 10 | Via ENC1_B cách mép board 0.35 mm (luật 0.5 mm); dời lên 0.2 mm thì lại sát đường ENC1_A | DRC | Đặt luật mép đúng năng lực JLCPCB (0.3 mm) |
+| 11 | 51 cảnh báo silkscreen: nhãn chân module cao 0.7 mm, tên linh kiện lố ra mép, VIN−/VIN+ đè nhau, khung XL4015 đè lên pad | DRC | `fix_silk.py` (chữ 0.8 × 0.15 mm, dời tên vào trong); trong `make_footprints.py`: nhãn mặc định 0.8 mm, viết tắt V−/V+, cắt cạnh dọc khung XL4015 |
+| 12 | Kiểm tra va chạm trong FreeCAD qua MCP hết thời gian chờ 90 s và mất kết quả 2 lần (lệnh vẫn chạy xong) | — | Ghi kết quả ra file rồi đọc file |
+
+- **CAD (`CAD/agv.FCStd`):**
+  - Thay tấm giữ chỗ 120 × 120 mm bằng `pcb_len` × `pcb_wid` = 150 × 125 mm. Ở `pcb_x` = −56 mm, mép trước PCB chỉ cách gá camera 1.5 mm, nên dời sang −54 mm (cách 3.5 mm); Pi đi theo (`pi_x = pcb_x − 8`). Kiểm tra `common()` với mọi chi tiết: không chồng lấn. Nạp mô hình STEP của board thật (648 khối): chỉ có chân TO-220 của Q1/U3 chạm Pi (0.04 mm³), vì mô hình để chân dài 8 mm dưới board. Khi hàn, chân được cắt ngắn.
+  - **Công tắc hành trình:** 2 × KW12 bắt sát mặt dưới tầng 2. Công tắc dưới có cần gạt thò lên qua khe 12 × 6 mm, mặt nâng đè xuống khi hạ hết. Công tắc trên bị một cờ in 3D (6 × 6 × 45.5 mm, treo dưới mặt nâng, đi qua khe 10 × 10 mm) chạm khi nâng đủ 30 mm. Không đặt công tắc phía trên mặt nâng vì sẽ vướng pallet. Kiểm tra ở `lift_pos` 0 và 30: cần gạt dưới bị ép 1.5 mm (chủ ý); cờ vừa chạm cần gạt trên; không chi tiết nào khác va chạm.
+  - **Chốt định vị pallet:** 2 côn in 3D Ø12 → Ø6, cao 8 mm tại (±100, 0) trên mặt nâng. File in nằm trong `CAD/print/`.
+  - Mô hình Pi vẫn là Pi 4B (cùng kích thước bo và lỗ bắt với Pi 5).
+- **Còn mở / chưa kiểm chứng:** chưa ướm footprint với module thật (đặc biệt INA219: footprint vẽ theo board Adafruit, module MCU-219 đang bán có thể khác); chưa đặt mạch. Dây pin 2.0 mm trên đồng 1 oz chịu khoảng 5 A khi nóng thêm 20 °C (ước theo IPC-2221, chưa đo), trong khi cầu chì là 8 A. Lưới STL của mô phỏng chưa xuất lại theo CAD mới (PCB/Pi dời 2 mm). Công tắc nguồn và nút dừng khẩn chưa có chỗ gắn trong CAD. Pallet thật cần 2 lỗ cho chốt định vị.
+- **Bài học:** con số "unrouted" của Freerouting và việc DRC chạy được chưa nói lên kết quả. Phải đọc file đầu ra (SES) và chắc rằng bước lưu trước đó không lỗi giữa chừng, rồi mới tin số liệu.
+
 ---
 
 ## 5. Tổng hợp sai lầm và bài học
@@ -857,6 +893,8 @@ Các sự cố gặp phải, theo thứ tự:
 | CAD → mô phỏng | Tin rằng mô phỏng thấy mọi vật cản: trụ gần lidar hơn tầm đo tối thiểu bị Gazebo bỏ qua | Đo xem cảm biến mô phỏng có thấy đúng thứ cảm biến thật sẽ thấy |
 | CAD → mô phỏng | Đổi track mà để nguyên gia tốc quay đặt cứng theo track cũ | Tham số suy ra từ hình học phải viết thành biểu thức, không chép số |
 | Kiểm thử | Script dọn dẹp giết luôn chính script chạy thử; phép đo trượt bánh cộng dồn sai | Kiểm tra công cụ đo trước khi kết luận (lặp lại bài học cũ) |
+| PCB | Khai GND là mặt đồng khi đi dây tự động, rồi tin con số "unrouted"; suýt đọc DRC của board chưa lưu | Đọc file đầu ra của công cụ (SES) và xác nhận bước lưu thành công trước khi tin số liệu |
+| PCB | Hộp courtyard chỉ có đế cắm, không có bo module cắm lên trên | Xem ảnh 3D để kiểm tra va chạm theo chiều cao |
 
 ## 6. Vấn đề còn mở
 Đã giải quyết (xem 4.6): AMCL lệch ở khu phía đông; "collision ahead" trong lối hẹp (từ 24 lần một chặng xuống 0–4 lần một nhiệm vụ).
@@ -870,8 +908,8 @@ Các sự cố gặp phải, theo thứ tự:
 7. **Cửa sổ Gazebo crash lúc khởi động** (driver NVIDIA D3D12 của WSL, 1/4 lần chạy): launch tự mở lại (mục 4.15). Có 1 lần xe không rời được trạm sạc vì "vật cản" ngay sau xe, chưa rõ nguyên nhân, chạy lại thì hết.
 8. **Nav2 thỉnh thoảng không khởi động xong:** container nạp node nhưng phản hồi dịch vụ `load_node` cho launch bị timeout, launch chờ mãi (1/10 lần chạy ngày 08/10). Chưa tìm nguyên nhân; khi gặp thì chạy lại.
 9. **Kiva:** lấy kệ đã chui theo chân kệ (lệch ngang ≤ 0.9 cm, mục 4.10) nhưng xe dừng quá tâm kệ 4–6 cm. Từ mục 4.19 (pallet trên chân đỡ cố định) trả pallet cũng theo 4 trụ, lệch tâm ô 0.2–2.1 cm. Đã có đơn hàng (mục 4.11), pin và tự sạc (mục 4.12), xử lý sự cố (mục 4.13); chưa phát hiện mất định vị.
-10. **PCB (mục 4.17):** chưa đi dây, chưa chạy DRC, chưa đặt được luật thiết kế 1 lớp; file PCB nháp chưa cập nhật theo sơ đồ đã bỏ 13 linh kiện; footprint module chưa ướm với module thật; dòng kẹt trục GA25 chưa đo; kích thước board 120 × 120 mm nhiều khả năng không đủ (Discovery chiếm 66 × 97 mm), mô hình FreeCAD vẫn giữ chỗ 120 × 120 mm và Raspberry Pi 4B.
-11. **PD13 (LED nhịp tim) chưa có trong `.ioc`** nhưng `App/Src/app.c` vẫn đảo chân này; build vẫn qua nhưng chân chưa được cấu hình ngõ ra nên nhiều khả năng LED không nháy (chưa kiểm chứng trên board). Cần bật lại PD13 là GPIO_Output trong CubeMX.
+10. **PCB (mục 4.17, 4.21):** đã đi dây 2 lớp, DRC sạch, có file Gerber cho JLCPCB (28/10/2026); chưa đặt mạch. Còn lại: footprint module chưa ướm với module thật (INA219: footprint theo board Adafruit, module MCU-219 có thể khác); dòng kẹt trục GA25 chưa đo; dây pin 2.0 mm trên đồng 1 oz chịu khoảng 5 A (ước lượng IPC-2221) so với cầu chì 8 A.
+11. **PD13 (LED nhịp tim):** đã có lại trong `.ioc` dạng GPIO_Output (kiểm tra ngày 28/10/2026); chưa thử LED trên board thật.
 
 ## 7. Cách ghi tiếp tài liệu này
 Mỗi khi xong một phần việc hoặc sửa xong một sự cố, thêm vào mục tương ứng theo quy ước ở đầu file: mục tiêu, cách làm, sai lầm, nguyên nhân, cách sửa, kết quả có số liệu, bài học. Quy tắc này nằm trong skill `.claude/skills/report-log`.
