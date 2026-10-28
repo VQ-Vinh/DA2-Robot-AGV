@@ -1,8 +1,13 @@
-"""Xep linh kien board me theo khoi chuc nang (chay bang Python cua KiCad, khi KiCad da dong board).
+"""Xep linh kien board me 2 lop theo khoi chuc nang (chay bang Python cua KiCad).
 
-    "C:/Users/<ten>/AppData/Local/Programs/KiCad/10.0/bin/python.exe" tools/place_board.py agv_mainboard.kicad_pcb
+    "C:/Users/<ten>/AppData/Local/Programs/KiCad/10.0/bin/python.exe" tools/place_board.py agv_mainboard.kicad_pcb [out.dsn]
 
-Toa do mm, goc do (nguoc chieu kim dong ho). Board 150 x 125 mm, goc tren trai tai (50, 50).
+Board 150 x 125 mm, goc tren trai tai (50, 50). Discovery dat goc tren phai (cong mini-USB nap code
+sat mep tren); ben trai la nguon, driver dong co, co cau nang; dau noi dong co o mep duoi;
+I2C / UART / cong tac hanh trinh o dai duoi Discovery. Moi linh kien cho bang goc tren-trai cua
+hop courtyard (mm) va goc xoay (do), de doc va sua de hon toa do tam.
+Xoa day cu, them 4 lo M3 o goc (khop tru 30 mm trong CAD). Co doi so thu 2 thi xuat file .dsn
+cho Freerouting.
 """
 import math
 import os
@@ -14,30 +19,35 @@ import pcbnew
 from pcbnew import FromMM, ToMM, VECTOR2I
 
 BOARD = (50.0, 50.0, 200.0, 175.0)
+HOLES = [(54, 54), (196, 54), (54, 171), (196, 171)]
 
-PLACEMENT = {
-    # MCU: hai hang rao cua Discovery (than board 66 x 97 mm, mep tren tai y = 51.3)
-    "J10": (127.0, 85.09, 0), "J11": (177.8, 85.09, 0),
-    # Nguon 5 V / 3.3 V
-    "U2": (79, 64, 0), "U3": (97, 82, 0), "C5": (95, 89, 0), "D2": (174.16, 80, 180), "J4": (57, 84, 270),
-    # Nguon vao, bao ve, sac
-    "J1": (54, 170, 0), "F1": (67.8, 171.5, 90), "Q1": (66, 143.5, 0), "J2": (57, 139, 90), "J3": (57, 121, 270), "D1": (65, 136, 90),
-    # Do dong, do ap pin
-    "U1": (90, 117.9, 180),
-    # Dung khan, nguon dong co
-    "J5": (101.5, 112, 0), "C6": (113, 150, 0), "R8": (186, 157, 0), "D4": (190, 163.5, 180),
-    "R5": (189, 128, 90), "R6": (189, 140.6, 90),
-    # Coi
-    "BZ1": (75.5, 107, 0), "Q2": (81, 95, 0), "R12": (72, 90.5, 0), "R13": (83.5, 98.8, 180), "D6": (87.6, 110, 90),
-    # Driver dong co DC
-    "U5": (102.7, 122, 0), "U4": (135.3, 171.2, 90),
-    "J22": (76, 168.1, 0), "J23": (91, 168.1, 0), "J20": (106, 168.1, 0), "J21": (121, 168.1, 0),
-    # Co cau nang
-    "U6": (156.5, 170, 90), "J30": (180.9, 160, 270), "JP1": (166.66, 152.3, 90), "C12": (194.5, 168, 0), "R11": (184, 151, 0),
-    "J31": (195, 99, 270), "C13": (189, 104, 90), "J32": (195, 109, 270), "C14": (189, 114, 90),
-    # IMU, I2C, UART
-    "U7": (188.5, 62, 0), "J40": (195, 85.3, 270), "J41": (100, 96, 0),
+# Discovery: chan 1 cua J10 tai (134, 84.5), J11 cach 50.8 mm; than board 66 x 97 mm tu y = 50.7,
+# jack audio thoi ra ~4 mm o mep duoi (toi y ~ 151.7)
+FIXED = {"J10": (134.0, 84.5, 0), "J11": (184.8, 84.5, 0)}
+
+BOX = {
+    # nguon vao, bao ve, do dong, 5 V / 3.3 V
+    "J1": (58, 51, 0), "J4": (58, 62, 0),
+    "U2": (72, 51, 0),
+    "U1": (51, 78, 180), "F1": (79, 78, 0), "Q1": (108, 78, 0), "U3": (108, 86, 0), "C5": (120.5, 85, 0),
+    "D2": (107, 93, 180),
+    "J5": (51, 104, 90), "J3": (51, 117, 90), "J2": (51, 130, 90), "D1": (62, 104, 90),
+    # driver dong co, co cau nang
+    "U5": (70, 104, 0), "U4": (95, 104, 0),
+    "U6": (70, 128, 90), "JP1": (94, 129, 90), "C12": (94, 137, 0), "C6": (105, 128, 0), "R11": (105, 141, 0),
+    # coi, do dung khan, LED
+    "BZ1": (51, 145, 0), "Q2": (66, 147, 0), "D6": (75, 148, 0), "R12": (66, 155, 0), "R13": (80, 155, 0),
+    "R5": (94, 147, 0), "R6": (94, 152, 0), "R8": (129, 153, 0), "D4": (143, 152.5, 180),
+    # IMU: bo GY-BNO055 chia len ~12 mm phia tren de, khong nam duoi jack audio cua Discovery
+    "U7": (106, 160, 90),
+    # dau noi dong co + buoc o mep duoi
+    "J22": (59, 165.5, 0), "J23": (76, 165.5, 0), "J20": (93, 165.5, 0), "J21": (110, 165.5, 0),
+    "J30": (128, 166, 0),
+    # I2C, UART, cong tac hanh trinh
+    "J40": (144, 166, 0), "J41": (160, 166, 0), "J31": (173, 166, 0), "J32": (183, 166, 0),
+    "C13": (175, 160, 0), "C14": (185, 160, 0),
 }
+
 
 def courtyards(path):
     """Hop bao F.CrtYd cua tung footprint, tinh tu file .kicad_pcb (mm, toa do board)."""
@@ -59,64 +69,67 @@ def courtyards(path):
     return out
 
 
-def main(path):
+def main(path, dsn=None):
     board = pcbnew.LoadBoard(path)
     refs = {fp.GetReference(): fp for fp in board.GetFootprints()}
-    missing = sorted(set(refs) - set(PLACEMENT)), sorted(set(PLACEMENT) - set(refs))
-    for ref, (x, y, rot) in PLACEMENT.items():
+    for ref, (x, y, rot) in FIXED.items():
+        refs[ref].SetOrientationDegrees(rot)
+        refs[ref].SetPosition(VECTOR2I(FromMM(x), FromMM(y)))
+    for ref, (x, y, rot) in BOX.items():
         fp = refs[ref]
-        fp.SetPosition(VECTOR2I(FromMM(x), FromMM(y)))
         fp.SetOrientationDegrees(rot)
+        cy = fp.GetCourtyard(pcbnew.F_CrtYd)
+        bb = cy.BBox() if cy.OutlineCount() else fp.GetBoundingBox(False)
+        p = fp.GetPosition()
+        fp.SetPosition(VECTOR2I(p.x + FromMM(x) - bb.GetX(), p.y + FromMM(y) - bb.GetY()))
+    missing = sorted(r for r in refs if r not in FIXED and r not in BOX and not r.startswith("H"))
 
-    # INA219: hai chan VIN-/VIN+ tren hang rao khong mang net (dong lon di qua hai lo domino)
-    u1 = refs["U1"]
-    for pad in u1.Pads():
-        if pad.GetNumber() in ("5", "6") and abs(ToMM(pad.GetFPRelativePosition().y)) < 0.5:
-            pad.SetNumber("")
-            pad.SetNetCode(0)
+    # lo bat M3: chi co tren board (khong co trong so do nen danh dau board-only)
+    lib = os.path.join(os.path.dirname(os.path.dirname(sys.executable)), "share", "kicad", "footprints", "MountingHole.pretty")
+    for i, (x, y) in enumerate(HOLES, start=1):
+        ref = "H%d" % i
+        if ref in refs:
+            board.Remove(refs[ref])
+        fp = pcbnew.FootprintLoad(lib, "MountingHole_3.2mm_M3")
+        fp.SetReference(ref)
+        fp.SetAttributes(fp.GetAttributes() | pcbnew.FP_BOARD_ONLY | pcbnew.FP_EXCLUDE_FROM_BOM | pcbnew.FP_EXCLUDE_FROM_POS_FILES)
+        fp.SetPosition(VECTOR2I(FromMM(x), FromMM(y)))
+        board.Add(fp)
 
-    # bo day cu va vung phu dong cu (neu co), ve lai vien board
     for t in list(board.GetTracks()):
         board.Remove(t)
-    for z in list(board.Zones()):
-        board.Remove(z)
-    for d in list(board.GetDrawings()):
-        if d.GetLayer() == pcbnew.Edge_Cuts:
-            board.Remove(d)
-    x1, y1, x2, y2 = BOARD
-    rect = pcbnew.PCB_SHAPE(board)
-    rect.SetShape(pcbnew.SHAPE_T_RECT)
-    rect.SetStart(VECTOR2I(FromMM(x1), FromMM(y1)))
-    rect.SetEnd(VECTOR2I(FromMM(x2), FromMM(y2)))
-    rect.SetLayer(pcbnew.Edge_Cuts)
-    rect.SetWidth(FromMM(0.1))
-    board.Add(rect)
 
     # KiCad dang mo board thi SaveBoard len chinh file do khong ghi duoc: luu ra file tam roi chep de
     tmp = os.path.join(tempfile.gettempdir(), "place_board_tmp.kicad_pcb")
     if not pcbnew.SaveBoard(tmp, board):
         raise SystemExit("SaveBoard failed")
     shutil.copyfile(tmp, path)
+    if dsn:
+        pcbnew.ExportSpecctraDSN(pcbnew.LoadBoard(path), dsn)
 
-    # soat chong lan vung chiem cho (courtyard) va lan mep: doc lai file da luu
+    # soat chong lan courtyard, lan mep, cham lo bat (doc lai file da luu)
     boxes = courtyards(path)
-    names = sorted(boxes)
+    names = sorted(n for n in boxes if not n.startswith("H"))
     x1, y1, x2, y2 = BOARD
-    overlaps = []
+    issues = []
     for i, a in enumerate(names):
         ax1, ay1, ax2, ay2 = boxes[a]
         if ax1 < x1 or ay1 < y1 or ax2 > x2 or ay2 > y2:
-            overlaps.append("%s lan mep (%.1f %.1f %.1f %.1f)" % (a, ax1, ay1, ax2, ay2))
+            issues.append("%s lan mep" % a)
+        if a not in ("J10", "J11"):
+            for hx, hy in HOLES:
+                if ax1 - 3.5 < hx < ax2 + 3.5 and ay1 - 3.5 < hy < ay2 + 3.5:
+                    issues.append("%s cham lo (%d, %d)" % (a, hx, hy))
         for b in names[i + 1:]:
             if {a, b} == {"J10", "J11"}:
                 continue
             bx1, by1, bx2, by2 = boxes[b]
             ox, oy = min(ax2, bx2) - max(ax1, bx1), min(ay2, by2) - max(ay1, by1)
             if ox > 0.05 and oy > 0.05:
-                overlaps.append("%s-%s %.1fx%.1f" % (a, b, ox, oy))
-    print("placed %d footprints | not in table: %s | not on board: %s" % (len(PLACEMENT), missing[0], missing[1]))
-    print("courtyard issues (%d): %s" % (len(overlaps), overlaps))
+                issues.append("%s-%s %.1fx%.1f" % (a, b, ox, oy))
+    print("placed %d | chua co vi tri: %s" % (len(FIXED) + len(BOX), missing))
+    print("courtyard issues (%d): %s" % (len(issues), issues))
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)
