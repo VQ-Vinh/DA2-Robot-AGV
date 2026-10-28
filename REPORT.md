@@ -78,6 +78,7 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 28/10/2026 | PCB chuyển sang 2 lớp đặt JLCPCB: xếp lại, đi dây bằng Freerouting, DRC sạch, xuất Gerber. CAD: PCB thật 150 × 125 mm, công tắc hành trình. Danh sách linh kiện tách 2 sheet CAD / PCB, có giá và link | (mục 4.21) |
 | 28/10/2026 | Đổi lidar YDLidar X4 sang X2L (X4 không có ở các shop, S2 Pro không có mô hình 3D): CAD, URDF, cảm biến Gazebo, tầm đo Nav2/SLAM | (mục 4.22) |
 | 28/10/2026 | PCB: domino quay lỗ cắm dây ra mép, nguồn vào J1 đổi sang jack XT60 (pin LiPo), đi dây lại, DRC sạch | (mục 4.23) |
+| 28/10/2026 | Pin đổi sang LiPo 3S 5200mAh: gá in 3D mới, lỗ luồn XT60 trên tầng 1 | (mục 4.24) |
 
 ---
 
@@ -886,6 +887,20 @@ Các sự cố gặp phải, theo thứ tự:
 |---|---|---|---|
 | 1 | Script nhập SES bị segfault (exit 139), board không có dây, DRC báo 101 pad hở | Chạy từng bước: nhập SES chạy được, lỗi ở bước đổ đồng sau khi gỡ zone cũ bằng `RemoveNative` (bản sửa ở mục 4.21 chưa chạy thử lại) | Giữ zone GND có sẵn, chỉ tạo mới khi chưa có |
 | 2 | Script sửa silkscreen dừng giữa chừng (`SwigPyObject` không có `GetBoundingBox`) sau khi xoá nét vẽ của J1; kiểm tra khớp sơ đồ báo footprint J1 thiếu tên thư viện, giá trị cũ | `FindFootprintByReference` trả đối tượng SWIG chưa định kiểu sau khi xoá; `FootprintLoad` không gán tên thư viện | Lấy footprint qua `GetFootprints()`, xoá nét vẽ sau cùng; đặt `LIB_ID('agv_modules', ...)`, giá trị, datasheet, mô tả cho khớp sơ đồ |
+
+### 4.24. Đổi pin sang LiPo 3S 5200mAh, gá pin mới và lỗ luồn XT60 (28/10/2026)
+
+- **Mục tiêu:** dùng pin người làm đồ án có sẵn: LiPo 3S 11.1 V 5200mAh 35C, nhãn 权盛电子, 55.72 Wh, đầu XT60 cái và đầu cân bằng JST-XH 4P. Làm gá cho pin, khoét lỗ trên tầng 1 để luồn đầu XT60 lên jack J1 (mục 4.23).
+- **Kích thước pin:** không tìm được thông số của nhãn này; pin 3S 5200mAh của các hãng khác dài 134–155 mm, rộng 40–48 mm, dày 25–29 mm, nặng 310–420 g. Ước lượng từ ảnh (lấy đầu XT60 dài 16 mm làm thước): 160 × 48 mm; chọn dày 30 mm để dư. **Chưa đo pin thật.** Các số nằm trong `Params` (`bat_len`, `bat_wid`, `bat_h`), đo xong sửa lại là gá tự dựng lại.
+- **Cách làm:**
+  - Pin dài 160 mm nên chỉ đặt được dọc trục x (theo y, khoảng trống giữa 2 hàng động cơ bánh chỉ còn 96 mm). Treo dưới tầng 1, chính giữa xe.
+  - Máng chữ U in 3D (~107 g PETG): 4 trụ đứng ở hai đầu, đỉnh trụ ép đai ốc cấy nhiệt M3, vít M3 × 10 từ trên tầng 1. Làm trụ đứng thay cho tai treo để in đáy xuống bàn không cần giá đỡ. Đầu trước khoét 36 mm cho dây ra. Đáy máng cách đất 17.5 mm (pack 18650 cũ: 19.9 mm).
+  - Lỗ luồn XT60 22 × 14 mm trên tầng 1.
+  - Bỏ mô hình pack 18650 + BMS.
+  - Sheet CAD: mạch bảo vệ và khung đế 18650 ghi không dùng nữa; adapter sạc 12.6 V thay bằng sạc cân bằng B3 Imax; thêm đai ốc cấy M3.
+  - URDF: khối lượng thân xe 2.6 → 2.8 kg (ước lượng).
+- **Sai lầm:** đặt lỗ XT60 lần đầu ngay dưới jack (−118, 42). Kiểm tra cột không gian phía trên lỗ thì thấy cắt qua đai GT2 của cơ cấu nâng (đai chạy dọc x ≈ −121 mm sát mặt tầng 1, chạm 117.6 mm³). Dời lỗ vào (−100, 40), tránh cả động cơ bánh phía dưới (\|y\| ≥ 48) và vùng Pi (y ≤ 28). Kiểm tra lại: cột phía trên lỗ và đường dây ra mép trước PCB không chạm gì; pin và máng không chạm động cơ, bánh, giá đỡ.
+- **Còn mở:** kích thước pin thật. Trạm sạc tự động (J3, mục 4.12) được thiết kế cho pack có mạch bảo vệ; LiPo không có mạch này, sạc qua J3 không cân bằng được từng cell, chưa có cách làm an toàn.
 
 ---
 
