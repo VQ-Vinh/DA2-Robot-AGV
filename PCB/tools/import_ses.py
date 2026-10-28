@@ -22,17 +22,20 @@ BOARD = (50.0, 50.0, 200.0, 175.0)
 
 def main(pcb, ses):
     board = pcbnew.LoadBoard(pcb)
-    # board.Remove(zone) loi SWIG ('SwigPyObject' khong co thisown) o KiCad 10: dung RemoveNative
-    for z in [board.GetArea(i) for i in range(board.GetAreaCount())]:
-        board.RemoveNative(z)
     for t in list(board.GetTracks()):
         board.Remove(t)
     if not pcbnew.ImportSpecctraSES(board, ses):
         raise SystemExit("import SES failed")
 
+    # Giu vung phu GND da co (go zone bang RemoveNative roi do dong lai lam KiCad 10 segfault);
+    # chi tao moi tren lop chua co
     gnd = board.FindNet("GND")
+    have = {L for i in range(board.GetAreaCount()) for L in (pcbnew.F_Cu, pcbnew.B_Cu)
+            if board.GetArea(i).GetNetname() == "GND" and board.GetArea(i).IsOnLayer(L)}
     x1, y1, x2, y2 = BOARD
     for layer in (pcbnew.F_Cu, pcbnew.B_Cu):
+        if layer in have:
+            continue
         z = pcbnew.ZONE(board)
         z.SetLayer(layer)
         z.SetNet(gnd)
@@ -47,7 +50,7 @@ def main(pcb, ses):
             ol.Append(FromMM(x), FromMM(y))
         z.SetOutline(ol)
         board.Add(z)
-    pcbnew.ZONE_FILLER(board).Fill(board.Zones())
+    pcbnew.ZONE_FILLER(board).Fill([board.GetArea(i) for i in range(board.GetAreaCount())])
 
     tmp = os.path.join(tempfile.gettempdir(), "import_ses_tmp.kicad_pcb")
     if not pcbnew.SaveBoard(tmp, board):
