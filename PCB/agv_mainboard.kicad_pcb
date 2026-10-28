@@ -7207,7 +7207,7 @@
 			(uuid "f72285d0-1a27-45b4-8952-d7563c9415bc")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/lib/models_own/xt60pw_m.step"
+		(model "${KIPRJMOD}/lib/3d/models/xt60pw_m.wrl"
 			(offset
 				(xyz 0 0 0)
 			)
