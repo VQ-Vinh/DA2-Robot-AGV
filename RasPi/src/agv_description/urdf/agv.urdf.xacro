@@ -22,7 +22,7 @@
   <xacro:property name="plate_thickness"  value="0.005"/>  <!-- (*) -->
   <xacro:property name="plate_gap"        value="0.10"/>   <!-- mat tren tang 1 -> mat duoi tang 2 -->
   <xacro:property name="plate1_below_axle" value="0.0175"/> <!-- (*) theo ga chu L cua GA25: mat duoi tang 1 cao hon truc banh -->
-  <xacro:property name="body_mass"        value="2.6"/>    <!-- (*) ca xe tru banh va mat nang: 2 mica ~1.0, 5 dong co ~0.7, pin, mach, lidar -->
+  <xacro:property name="body_mass"        value="2.8"/>    <!-- (*) ca xe tru banh va mat nang: 2 mica ~1.0, 5 dong co ~0.7, pin LiPo 3S 5200mAh ~0.4, mach, lidar -->
 
   <!-- Banh "65 mm": duong kinh ngoai thuc 68 mm (model banh) -->
   <xacro:property name="wheel_radius"     value="0.034"/>
