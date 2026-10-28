@@ -178,7 +178,7 @@ ros2 launch agv_gazebo sim.launch.py slam:=true      # mô phỏng
 ros2 launch agv_navigation slam.launch.py            # xe thật (cần /scan, /odom, TF)
 ```
 
-Cấu hình `agv_navigation/config/slam.yaml` là **nguyên file mặc định** `mapper_params_online_async.yaml` của slam_toolbox, chỉ đổi `max_laser_range` thành 10 m (YDLidar X4). Cách làm này giống [linorobot2](https://github.com/linorobot/linorobot2) (dự án AGV DIY dùng Jazzy + Gazebo Harmonic + YDLidar). Kiến trúc DiffDrive → EKF (odom vx, vy, wz + gyro wz) → slam_toolbox cũng giống linorobot2 và robot mẫu `sam_bot` của [Nav2](https://github.com/ros-navigation/navigation2_tutorials).
+Cấu hình `agv_navigation/config/slam.yaml` là **nguyên file mặc định** `mapper_params_online_async.yaml` của slam_toolbox, chỉ đổi `max_laser_range` thành 8 m (YDLidar X2L; trước là 10 m với X4). Cách làm này giống [linorobot2](https://github.com/linorobot/linorobot2) (dự án AGV DIY dùng Jazzy + Gazebo Harmonic + YDLidar). Kiến trúc DiffDrive → EKF (odom vx, vy, wz + gyro wz) → slam_toolbox cũng giống linorobot2 và robot mẫu `sam_bot` của [Nav2](https://github.com/ros-navigation/navigation2_tutorials).
 
 > **Đừng chỉnh tham số SLAM khi chưa đo.** Lần đầu mình hạ `minimum_travel_distance/heading` từ 0.5 xuống 0.2 và `map_update_interval` từ 5 s xuống 2 s. Kết quả là SLAM quá tải ("Message Filter dropping message... queue is full"), TF map → odom trễ tới 1.7 s, bản đồ đầy vệt chéo, chỉ 25–36 % ô vật cản nằm đúng chỗ. Trả về mặc định thì hết.
 
@@ -364,7 +364,7 @@ agv_cmd.py ──/mission/command──► mission_server ──NavigateToPose�
 | `/wheel/odom` | `nav_msgs/Odometry` | `wheel_odom` → EKF (xe thật: node cầu nối STM32) |
 | `/odom`, `/tf` (odom → base_footprint) | `nav_msgs/Odometry`, `tf2_msgs/TFMessage` | EKF → SLAM, Nav2 |
 | `/map`, `/tf` (map → odom) | `nav_msgs/OccupancyGrid` | slam_toolbox → RViz, Nav2 |
-| `/scan_raw` (7 Hz, 720 tia, 0.12–10 m) | `sensor_msgs/LaserScan` | Gazebo → `payload_manager` (xe thật: driver YDLidar) |
+| `/scan_raw` (7 Hz, 430 tia, 0.12–8 m, YDLidar X2L) | `sensor_msgs/LaserScan` | Gazebo → `payload_manager` (xe thật: driver YDLidar) |
 | `/scan` | `sensor_msgs/LaserScan` | `payload_manager` → SLAM, AMCL, Nav2 |
 | `/lift/command`, `/lift/state`, `/lift/has_load` | `std_msgs/String`, `String`, `Bool` | cơ cấu nâng (`lift_sim` / cầu nối STM32) |
 | `/lift/cmd_pos`, `/lift/contact` | `std_msgs/Float64`, `ros_gz_interfaces/Contacts` | `lift_sim` ↔ Gazebo |
@@ -376,6 +376,6 @@ agv_cmd.py ──/mission/command──► mission_server ──NavigateToPose�
 
 Đặt ở đầu `agv_description/urdf/agv.urdf.xacro`, **lấy từ mô hình cơ khí `CAD/agv.FCStd`** (REPORT.md 4.16, 4.20): thân 2 tầng mica 30 × 30 cm cách nhau 10 cm, bánh Ø68 mm nằm trong khung (track 0.27 m, wheelbase 0.20 m), đầu xe là phía PCB + Pi, lidar giữa 2 tầng **phía sau** tâm xe 0.095 m (`lidar_x`, mặt quét cao 0.123 m), mặt nâng 26 × 26 cm trên tầng 2 (nâng 3 cm trong ~4.5 s như vít me thật). Hình hiển thị là lưới STL trong `agv_description/meshes/`, sinh bằng `CAD/export_meshes.py`; va chạm vẫn là hộp / trụ. Giá trị đánh dấu `(*)` là ước lượng, cần đo xe thật rồi sửa.
 
-Lidar quét ở ~0.12 m: thấy pallet 15 cm và trụ chân đỡ pallet, không thấy vật thấp hơn. 4 trụ ốc và 4 vít me nâng giữa 2 tầng che lidar tổng cộng ~21°; `payload_manager` lọc bỏ. Khung lọc (thân xe) và khung bỏ điểm của `shelf_detector` tính quanh `base_link`; vị trí lidar đọc từ TF `base_link → laser_frame`, nên dời lidar chỉ cần sửa URDF. Lidar mô phỏng để tầm tối thiểu 0.05 m (X4 thật 0.12 m) để nó thấy các trụ cách lidar 9–11 cm; nếu không Gazebo bỏ qua chúng.
+Lidar quét ở ~0.127 m (X2L trên 3 trụ 50 mm): thấy pallet 15 cm và trụ chân đỡ pallet, không thấy vật thấp hơn. 4 trụ ốc và 4 vít me nâng giữa 2 tầng che lidar tổng cộng ~21°; `payload_manager` lọc bỏ. Khung lọc (thân xe) và khung bỏ điểm của `shelf_detector` tính quanh `base_link`; vị trí lidar đọc từ TF `base_link → laser_frame`, nên dời lidar chỉ cần sửa URDF. Lidar mô phỏng để tầm tối thiểu 0.05 m (X2L thật 0.12 m) để nó thấy các trụ cách lidar 9–11 cm; nếu không Gazebo bỏ qua chúng.
 
 `effective_track` (0.383 m) là track hiệu dụng cho skid-steer: bánh trượt ngang khi quay nên xe quay ít hơn tính theo `track_width`. Hiệu chỉnh bằng cách cho xe quay tại chỗ rồi đặt `effective_track` mới = `effective_track` hiện tại × `góc_odom / góc_thật`.
