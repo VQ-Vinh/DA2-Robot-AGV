@@ -23,7 +23,7 @@ Quy ước mỗi mục:
 | Máy tính trên xe | Raspberry Pi 4 (4 GB), Ubuntu Server 24.04, ROS 2 Jazzy → đổi sang Raspberry Pi 5 (PR #21) |
 | Vi điều khiển | STM32F4 Discovery (STM32F407), FreeRTOS, nối với Pi qua UART (USART2) |
 | Động cơ | 4 × GA25-370 có encoder, kiểu skid-steer (4 bánh thường), 2 × driver L298N → đổi sang 2 × TB6612FNG (PR #21); cơ cấu nâng dùng động cơ bước + A4988 |
-| Cảm biến | YDLidar X2/X4 (USB), IMU BNO055, đo pin INA226 → đổi sang INA169 5 A (PR #21) → INA219 I2C (mục 4.17), PiCamera |
+| Cảm biến | YDLidar X2/X4 (USB) → X2L (mục 4.22), IMU BNO055, đo pin INA226 → đổi sang INA169 5 A (PR #21) → INA219 I2C (mục 4.17), PiCamera |
 | Khung | 2 tầng mica 30 × 30 cm cách nhau 10 cm, bánh 65 mm |
 
 **Kiến trúc phần mềm:**
@@ -76,6 +76,8 @@ STM32:                                       điều khiển tốc độ 4 bánh
 | 13/10/2026 | Dời lidar trong URDF theo CAD; sửa bộ lọc scan và `shelf_detector` tính theo `base_link`; chạy lại test mô phỏng | — |
 | 13/10/2026 | Kho pallet: chân đỡ 4 trụ cố định + pallet có thùng hàng; lập lại bản đồ; trả pallet theo trụ, detector chọn theo ô đích | — |
 | 28/10/2026 | PCB chuyển sang 2 lớp đặt JLCPCB: xếp lại, đi dây bằng Freerouting, DRC sạch, xuất Gerber. CAD: PCB thật 150 × 125 mm, công tắc hành trình. Danh sách linh kiện tách 2 sheet CAD / PCB, có giá và link | (mục 4.21) |
+| 28/10/2026 | Đổi lidar YDLidar X4 sang X2L (X4 không có ở các shop, S2 Pro không có mô hình 3D): CAD, URDF, cảm biến Gazebo, tầm đo Nav2/SLAM | (mục 4.22) |
+| 28/10/2026 | PCB: domino quay lỗ cắm dây ra mép, nguồn vào J1 đổi sang jack XT60 (pin LiPo), đi dây lại, DRC sạch | (mục 4.23) |
 
 ---
 
@@ -824,7 +826,7 @@ Các sự cố gặp phải, theo thứ tự:
   - Board trên `main` đang để toàn bộ linh kiện ngoài viền (đã chạy `unplace_board.py` để xếp tay) nên phải xếp lại từ đầu. Viết lại `PCB/tools/place_board.py`: mỗi linh kiện cho bằng góc trên-trái hộp courtyard và góc xoay. Bố cục: Discovery ở góc trên phải (mini-USB nạp code sát mép), nguồn ở trên bên trái, driver động cơ và cơ cấu nâng ở dưới bên trái, 4 đầu nối động cơ ở mép dưới, I2C/UART/công tắc hành trình ở dải dưới Discovery. Thêm 4 lỗ M3 (H1–H4) cách mép 4 mm, khớp với trụ trong CAD, đánh dấu chỉ có trên board.
   - Luật thiết kế theo năng lực JLCPCB 2 lớp: khoảng hở tối thiểu 0.2 mm (lớp Default 0.25), dây tối thiểu 0.2 mm, via 0.6/0.3 mm, lỗ khoan tối thiểu 0.3 mm, đồng cách mép 0.3 mm. Bề rộng theo lớp net: Battery 2.0 mm (bản 1 lớp là 5.0), MotorSupply 1.5, MotorOut 0.8, Supply 0.6, Ground 0.6 (lớp mới).
   - Đi dây bằng Freerouting 2.1.0 (file jar, Java 21 trong WSL), trao đổi qua file DSN/SES (`tools/import_ses.py`); phủ đồng GND cả 2 lớp; 379 via nối GND hai lớp theo lưới 5 mm (`tools/stitch_gnd.py --fence`); sửa silkscreen bằng `tools/fix_silk.py`.
-  - **Kết quả:** DRC có kiểm tra khớp sơ đồ: **0 vi phạm, 0 pad chưa nối, 0 lỗi lệch so với sơ đồ**. Gerber + file khoan ở `PCB/export/agv_mainboard_jlcpcb.zip`, lỗ nhỏ nhất 0.3 mm. Có ảnh render 3D và PDF bố cục, đi dây trong `PCB/export/`.
+  - **Kết quả:** DRC có kiểm tra khớp sơ đồ: **0 vi phạm, 0 pad chưa nối, 0 lỗi lệch so với sơ đồ**. Gerber + file khoan ở `PCB/export/agv_mainboard_jlcpcb.zip`, lỗ nhỏ nhất 0.3 mm. PDF bố cục và đi dây ở `PCB/export/`; ảnh render 3D xuất cùng chỗ nhưng không lên git (`.gitignore` bỏ `*.png`).
 - **Sai lầm và sự cố:**
 
 | # | Sự cố | Nguyên nhân (tìm bằng cách nào) | Cách sửa |
@@ -849,6 +851,41 @@ Các sự cố gặp phải, theo thứ tự:
   - Mô hình Pi vẫn là Pi 4B (cùng kích thước bo và lỗ bắt với Pi 5).
 - **Còn mở / chưa kiểm chứng:** chưa ướm footprint với module thật (đặc biệt INA219: footprint vẽ theo board Adafruit, module MCU-219 đang bán có thể khác); chưa đặt mạch. Dây pin 2.0 mm trên đồng 1 oz chịu khoảng 5 A khi nóng thêm 20 °C (ước theo IPC-2221, chưa đo), trong khi cầu chì là 8 A. Lưới STL của mô phỏng chưa xuất lại theo CAD mới (PCB/Pi dời 2 mm). Công tắc nguồn và nút dừng khẩn chưa có chỗ gắn trong CAD. Pallet thật cần 2 lỗ cho chốt định vị.
 - **Bài học:** con số "unrouted" của Freerouting và việc DRC chạy được chưa nói lên kết quả. Phải đọc file đầu ra (SES) và chắc rằng bước lưu trước đó không lỗi giữa chừng, rồi mới tin số liệu.
+
+### 4.22. Đổi lidar YDLidar X4 sang X2L (28/10/2026)
+
+- **Lý do:** ba cửa hàng hay mua (hshop, icdayroi, thegioiic) không bán YDLidar X4. Người làm đồ án đề xuất **S2 Pro**, nhưng không tìm được mô hình 3D hay kích thước: GrabCAD có 18 mô hình YDLidar nhưng không có S2/S2 Pro, trang hãng không còn sản phẩm này, còn repo GitHub `YDLIDAR/S2-Pro` và file `SDK.pdf` (241 trang, tài liệu API sinh bằng Doxygen) chỉ có phần mềm. Chọn **X2L** thay thế, vì có mô hình trên GrabCAD (`ydlidar-x2l-lidar-1`). Mô hình ở dạng SolidWorks; người làm đồ án xuất sang STEP.
+- **So với X4:** tầm 0.12–8 m (X4: 10 m), 3000 điểm/s (5000), 5–8 Hz (6–12 Hz), UART 115200 baud (128000), theo các trang bán lẻ; hãng không còn trang riêng cho X2L.
+- **CAD:**
+  - Đọc STEP bằng `freecadcmd`: đế + mạch 101 × 57 × 11 mm, đầu quay Ø60 × 18 mm, động cơ thò xuống 19.4 mm dưới đế, 3 lỗ Ø3.5 mm trên đế (vừa vít M3). Bỏ 3 chân do tác giả mô hình tự vẽ.
+  - Đặt động cơ quay về sau, tâm đầu quay tại x = 92 mm (trước là 95 với X4). Ở 95 mm, đuôi lidar lòi ra ngoài mép mica 1.5 mm.
+  - Vì động cơ thò xuống dưới đế, lidar đứng trên 3 trụ M3 cái-cái 50 mm. Mặt quét ở 126.5 mm (giữa đầu quay, ước lượng), cao hơn đỉnh NEMA17 (116.5 mm) và đỉnh linh kiện trên PCB (112.6 mm). 4 đai ốc nâng không còn cắt mặt quét như với X4.
+  - Cùng ngày, theo yêu cầu: xoay Raspberry Pi cho cổng USB/Ethernet quay về phía lidar (trước đó quay sang trái), dời 4 lỗ bắt Pi trên tầng 1 theo. Trước cổng USB còn trống 40 mm để cắm cáp. Chân TO-220 trên mô hình PCB không còn chạm Pi như ở mục 4.21.
+  - Kiểm tra `common()` ở `lift_pos` 0 và 30: không chồng lấn. Chi tiết cắt mặt quét: 4 trụ tầng và 4 vít me như trước, thêm cờ báo nâng khi mặt nâng hạ hết. Cờ nằm trong khung lọc thân xe 0.32 × 0.32 m.
+- **Mô phỏng:** xuất lại lưới (`CAD/export_meshes.py`, sửa tên đối tượng lidar). URDF: `lidar_x` −0.092, `lidar_scan_z` 0.1265. Gazebo: 430 tia/vòng (3000 điểm/s ÷ 7 Hz; X4 là 720), tầm 8 m. `nav2.yaml` (AMCL) và `slam.yaml`: tầm tối đa 8 m.
+- **Sự cố khi dựng mô hình:**
+
+| # | Sự cố | Nguyên nhân (tìm bằng cách nào) | Cách sửa |
+|---|---|---|---|
+| 1 | Lần đặt đầu tiên: động cơ lidar nằm phía trên đế | Gán shape có phép xoay trong `Placement` cho feature; biểu thức đặt vị trí ghi đè phần dời nhưng phép xoay vẫn bị gán sai (in hộp bao để so) | Ghi phép biến đổi vào hình học |
+| 2 | Lần 2: tâm đầu quay lệch 22 mm, động cơ nằm ngoài đế | `transformShape` chỉ đổi vị trí gốc của shape; mỗi khối đọc từ STEP lại mang sẵn vị trí lắp ráp riêng, `transformGeometry` bỏ qua phần này | Ghi vị trí lắp ráp của từng khối vào hình học trước, rồi mới áp phép biến đổi |
+| 3 | Người làm đồ án thấy một "tấm thừa" nằm trên PCB trong FreeCAD | Mô hình 3D bo Discovery trong file STEP xuất từ KiCad có 7 mặt phẳng vô hạn ở z = 101.2 mm (khung bao 2e+100 mm). Đây cũng là lý do khung bao của mô hình PCB ra vô hạn ở mục 4.21, lúc đó đã bỏ qua | Lọc bỏ các mặt vô hạn; thay Discovery bằng tấm giữ chỗ 66 × 97 × 1.6 mm, đáy cao hơn mặt PCB 11 mm; không chạm chi tiết nào |
+
+- **Thử lại mô phỏng (kho pallet, vùng chết 100 RPM, 1 lần mỗi bài):** `order_test`: 3 đơn xong, 1 đơn huỷ đúng, 0 lỗi, trung bình 91 s/đơn, pallet trả về lệch tâm ô 0.3 cm. `motion_test`: 8/8 đơn xong, 86–139 s (trung bình 110 s); pallet lệch tâm ô 0.2–1.9 cm, xe lệch hướng khi trả tối đa 3.5° (với X4 sau khi đổi kho pallet, mục 4.20: 0.3–1.3 cm, 4.6°). Bước trả kệ quay thừa trung bình 111°, một lần 832° (vùng chết, như mục 4.14). Cột "kệ trượt trên xe khi chờ" (2.9–33 cm) vẫn là lỗi cách đo đã ghi ở mục 4.20. Mới chạy 1 lần nên chưa đủ để so tốc độ với X4.
+- **Còn mở:** vị trí mặt quét trong đầu quay X2L là ước lượng (giữa đầu quay); chưa có X2L thật để đo; chưa tìm được nơi bán trong nước.
+
+### 4.23. PCB: domino quay lỗ cắm dây ra mép, đổi nguồn vào sang jack XT60 (28/10/2026)
+
+- **Vấn đề (người làm đồ án phát hiện):** ở bố cục mục 4.21, lỗ cắm dây của các domino J2, J3, J5 (cột trái) quay vào trong board, J4 quay xuống phía INA219, nên không cắm dây được. Nguyên nhân: footprint MaiXu MX126 có lỗ cắm dây ở phía +y; bản xếp chỉ để ý hộp chiếm chỗ, không để ý hướng lỗ cắm. Đã kiểm tra lại bằng ảnh 3D nhìn ngang từ mép board.
+- **Sửa:** J2, J3, J5 xoay 270° (lỗ cắm quay ra mép trái); J4 xoay 180° (lỗ cắm quay lên mép trên).
+- **Nguồn vào J1 đổi sang jack XT60** (theo yêu cầu, để cắm pin LiPo): footprint `AMASS_XT60PW-M` (đực, hàn mạch, nằm ngang), miệng cắm quay ra mép trái board (mép trước xe trong CAD). Footprint gốc của KiCad có chân 1 là cực âm, trong khi ký hiệu J1 có chân 1 = BAT_IN. Vì vậy tạo footprint riêng `agv_modules:XT60PW-M_Battery_Pin1Plus` đổi số chân (chân 1 = +), không phải sửa dây trên sơ đồ. KiCad không có mô hình 3D cho XT60PW nên dựng hộp đơn giản `PCB/lib/models_own/xt60pw_m.step`. Thay footprint trên board bằng `tools/swap_footprint.py` (giữ net theo số chân và liên kết với sơ đồ). Ba cửa hàng hay mua không bán loại XT60 hàn mạch, chỉ có loại hàn dây XT60H.
+- **Đi dây lại** (Freerouting như mục 4.21): sau khi nhập có 0 pad hở ngay, không cần thêm via GND. Kết quả: DRC + kiểm tra khớp sơ đồ 0/0/0, ERC 0 lỗi. Đã xuất lại Gerber, ảnh 3D, PDF. CAD: nạp lại mô hình PCB, không chạm chi tiết nào; trước miệng XT60 trống 25 mm.
+- **Sự cố:**
+
+| # | Sự cố | Nguyên nhân (tìm bằng cách nào) | Cách sửa |
+|---|---|---|---|
+| 1 | Script nhập SES bị segfault (exit 139), board không có dây, DRC báo 101 pad hở | Chạy từng bước: nhập SES chạy được, lỗi ở bước đổ đồng sau khi gỡ zone cũ bằng `RemoveNative` (bản sửa ở mục 4.21 chưa chạy thử lại) | Giữ zone GND có sẵn, chỉ tạo mới khi chưa có |
+| 2 | Script sửa silkscreen dừng giữa chừng (`SwigPyObject` không có `GetBoundingBox`) sau khi xoá nét vẽ của J1; kiểm tra khớp sơ đồ báo footprint J1 thiếu tên thư viện, giá trị cũ | `FindFootprintByReference` trả đối tượng SWIG chưa định kiểu sau khi xoá; `FootprintLoad` không gán tên thư viện | Lấy footprint qua `GetFootprints()`, xoá nét vẽ sau cùng; đặt `LIB_ID('agv_modules', ...)`, giá trị, datasheet, mô tả cho khớp sơ đồ |
 
 ---
 
