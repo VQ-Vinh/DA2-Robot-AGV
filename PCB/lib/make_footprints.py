@@ -48,9 +48,10 @@ def rect(x1, y1, x2, y2, layer, width):
 
 
 def label(txt, x, y, size=0.8):
+    # 0.8 x 0.15 mm: muc chu nho nhat JLCPCB in ro
     return (
         f'  (fp_text user "{txt}" (at {x:.3f} {y:.3f} 0) (layer "F.SilkS")\n'
-        f'    (effects (font (size {size} {size}) (thickness 0.12))))\n'
+        f'    (effects (font (size {size} {size}) (thickness 0.15))))\n'
     )
 
 
@@ -94,17 +95,19 @@ def tb6612():
     left = ["VM", "VCC", "GND", "AO1", "AO2", "BO2", "BO1", "GND"]
     right = ["PWMA", "AIN2", "AIN1", "STBY", "BIN1", "BIN2", "PWMB", "GND"]
     s = header("TB6612FNG_Module", "Module TB6612FNG kieu SparkFun ROB-14450, 2 hang 1x8 buoc 2.54, cach 15.24 mm")
+    # 3 chan GND noi chung tren module: khai bao de DRC coi la da noi (khong can noi tren board me)
+    s += '  (jumper_pad_groups ("3" "8" "16"))\n'
     s += text("Reference", "REF**", 7.62, -2.4, "F.SilkS")
     s += text("Value", "TB6612FNG_Module", 7.62, 20.3, "F.Fab")
     s += outline(-2.54, -1.27, 17.78, 19.05)
     for i, n in enumerate(left):
         y = i * 2.54
         s += pad(i + 1, 0, y, 2.2, 1.7, HDR_DRILL, "rect" if i == 0 else "oval")
-        s += label(n, 3.3, y, 0.7)
+        s += label(n, 3.3, y)
     for i, n in enumerate(right):
         y = i * 2.54
         s += pad(i + 9, 15.24, y, 2.2, 1.7, HDR_DRILL)
-        s += label(n, 11.7, y, 0.7)
+        s += label(n, 11.7, y)
     s += model(SOCKET_1X08) + model(SOCKET_1X08, (15.24, 0, 0)) + model(M3D + "tb6612fng.step", (18.1, -8.89, 10.02))
     return s + ")\n"
 
@@ -124,11 +127,11 @@ def ina169():
     for i, (num, n) in enumerate(hdr):
         x = i * 2.54
         s += pad(num, x, 0, 1.7, 2.2, HDR_DRILL, "rect" if i == 0 else "oval")
-        s += label(n, x, -2.2, 0.6)
+        s += label(n, x, -2.2)
     s += pad("2", 3.253, -14.836, 2.4, 3.0, PWR_DRILL)
     s += pad("1", 6.753, -14.836, 2.4, 3.0, PWR_DRILL)
-    s += label("VIN-", 1.0, -12.2, 0.6)
-    s += label("VIN+", 9.0, -12.2, 0.6)
+    s += label("VIN-", 1.0, -12.2)
+    s += label("VIN+", 9.0, -12.2)
     return s + ")\n"
 
 
@@ -144,16 +147,17 @@ def ina219():
     s += text("Reference", "REF**", 6.35, 3.9, "F.SilkS")
     s += text("Value", "INA219_Module", 6.35, -20.6, "F.Fab")
     s += outline(-6.731, -19.446, 18.669, 2.794)
-    for i, n in enumerate(["VCC", "GND", "SCL", "SDA", "VIN-", "VIN+"]):
+    # nhan hang rao buoc 2.54 mm: "VIN-"/"VIN+" co 0.8 mm se de len nhau nen viet tat V-/V+
+    for i, n in enumerate(["VCC", "GND", "SCL", "SDA", "V-", "V+"]):
         x = i * 2.54
         # hai chan VIN-/VIN+ cua hang rao de trong (khong gan net): dong lon di qua hai lo domino,
         # tren module hai cap chan nay da noi san voi nhau
         s += pad(i + 1 if i < 4 else "", x, 0, 1.7, 2.2, HDR_DRILL, "rect" if i == 0 else "oval")
-        s += label(n, x, -2.2, 0.6)
+        s += label(n, x, -2.2)
     s += pad("5", 4.269, -16.106, 2.6, 3.4, PWR_DRILL)
     s += pad("6", 7.769, -16.106, 2.6, 3.4, PWR_DRILL)
-    s += label("VIN-", 1.6, -13.2, 0.6)
-    s += label("VIN+", 10.4, -13.2, 0.6)
+    s += label("VIN-", 1.6, -13.2)
+    s += label("VIN+", 10.4, -13.2)
     s += model("${KICAD10_3DMODEL_DIR}/Connector_PinHeader_2.54mm.3dshapes/PinHeader_1x06_P2.54mm_Vertical.step", (0, 0, 0), (0, 0, -90))
     s += model(M3D + "ina219.wrl", (-6.44, -3.0, 2.5), (-90, 0, 0))
     return s + ")" + chr(10)
@@ -165,6 +169,11 @@ def xl4015():
     s += text("Reference", "REF**", 0, -13.2, "F.SilkS")
     s += text("Value", "XL4015_Module", 0, 13.2, "F.Fab")
     s += outline(-27, -12, 27, 12)
+    # canh doc cua khung silkscreen di qua 4 pad o goc: chi giu doan giua hai pad (|y| <= 8)
+    for x in (-27, 27):
+        bad = '  (fp_line (start %.3f %.3f) (end %.3f %.3f)\n    (stroke (width 0.12) (type solid)) (layer "F.SilkS"))\n'
+        s = s.replace(bad % (x, -12 if x > 0 else 12, x, 12 if x > 0 else -12),
+                      bad % (x, -8, x, 8))
     for num, n, x, y in [("1", "IN+", -25, -10), ("2", "IN-", -25, 10),
                          ("3", "OUT+", 25, -10), ("4", "OUT-", 25, 10)]:
         s += pad(num, x, y, 4.0, 3.2, PWR_DRILL, "rect" if num == "1" else "oval")
